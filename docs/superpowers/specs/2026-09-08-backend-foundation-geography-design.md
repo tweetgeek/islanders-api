@@ -12,9 +12,11 @@ oraz doprecyzowane Player, Home Settlement, Incoming Fleet i Round z sesji grill
 ## 1. Cel i zakres
 
 Pierwszy z trzech speców backendu. Dostarcza kroki 1–5 z sekcji 12 wytycznych plus limity
-zapytań z kroku 10:
+zapytań z kroku 10, poprzedzone Etapem 0 (sekcja 4.1):
 
-1. szkielet: konfiguracja, Drizzle, migracje, kontener z bazą, health;
+0. etap 0: konfiguracja NestJS, `docker-compose.yml` z PostgreSQL i Redisem, Swagger,
+   szkielet modułów;
+1. szkielet danych: Drizzle, migracje, health z pingiem bazy;
 2. geografia z testem zgodności na `contract/world-parity.json`;
 3. konta i JWT;
 4. światy, dołączanie, osada domowa;
@@ -24,8 +26,8 @@ Po wdrożeniu specu A klient może się zarejestrować, zalogować, dołączyć 
 osadę domową na lądzie, pobrać stan świata, własne i cudze osady oraz (pustą) listę flot.
 
 Poza zakresem A (specy B i C): rozbudowa budynków, rekrutacja, garnizon, wysyłka i
-rozstrzyganie flot, kolonizacja, wyprawy, zmiany wiatru, Redis i BullMQ, logowanie zdarzeń
-i metryki.
+rozstrzyganie flot, kolonizacja, wyprawy, zmiany wiatru, BullMQ i jakikolwiek kod łączący
+się z Redisem (kontener stoi od Etapu 0, używa go dopiero C), logowanie zdarzeń i metryki.
 
 ## 2. Podział na trzy specy
 
@@ -56,6 +58,7 @@ src/
     config/         schemat env (zod), ConfigModule
     db/             schema Drizzle (plik na tabelę), połączenie postgres.js, migrator
     http/           globalny prefix /api/v1, ValidationPipe, ServerTimeInterceptor, filtr wyjątków
+    swagger/        setupSwagger(app) pod /api/docs, włączany flagą env
   modules/
     health/         GET /health
     auth/           register, login, refresh, logout, JwtAuthGuard, @Public()
@@ -67,7 +70,7 @@ src/
     create-world.ts
 drizzle/            migracje SQL z drizzle-kit, commitowane
 test/               *.e2e-spec.ts (Testcontainers + supertest)
-docker-compose.yml  Postgres 17 do pracy lokalnej
+docker-compose.yml  Postgres 17 i Redis 7 do pracy lokalnej
 ```
 
 Każda jednostka odpowiada na trzy pytania: co robi, jak jej użyć, od czego zależy.
@@ -88,20 +91,67 @@ Każda jednostka odpowiada na trzy pytania: co robi, jak jej użyć, od czego za
 | `JWT_ACCESS_TTL` | `15m` | |
 | `JWT_REFRESH_TTL` | `30d` | |
 | `ISLANDERS_CLIENT_DIR` | `../islanders` | tylko test parity |
+| `REDIS_URL` | `redis://localhost:6379` | zadeklarowana od Etapu 0, używana od specu C |
+| `SWAGGER_ENABLED` | `true` poza `NODE_ENV=production`, inaczej `false` | dokumentacja pod `/api/docs` |
+| `NODE_ENV` | `development` | |
 
 - `@nestjs/jwt`, `argon2`, `@nestjs/throttler`, `@nestjs/terminus`, `class-validator`,
-  `class-transformer`.
+  `class-transformer`, `@nestjs/swagger`.
 - Dev: `@testcontainers/postgresql`, `supertest`, `drizzle-kit`.
 - `@nestjs/observe` z kluczami-wydmuszkami wypada z `AppModule`. Wraca w kroku 10, gdy
   będą prawdziwe klucze.
+
+### 4.1 Etap 0: konfiguracja NestJS, kontenery, Swagger, szkielet modułów
+
+Etap 0 kończy się aplikacją, która startuje, odpowiada na `/api/v1/health` i pokazuje pustą
+dokumentację, zanim powstanie jakakolwiek tabela czy logika domenowa. Bez tego etapu każdy
+kolejny krok musiałby przy okazji dokładać kawałek fundamentu.
+
+**Konfiguracja NestJS.**
+
+- `main.ts`: globalny prefix `api/v1`, `ValidationPipe` z `whitelist`, `forbidNonWhitelisted`
+  i `transform`, `enableShutdownHooks()`, port z konfiguracji, log adresu po starcie.
+- `ConfigModule` globalny z walidacją env przez `zod` (tabela wyżej); brakująca zmienna
+  wymagana zatrzymuje start z czytelnym komunikatem, nie przy pierwszym żądaniu.
+- Plik `.env.example` z każdą zmienną z tabeli i komentarzem; `.env` w `.gitignore`.
+- Usunięcie `@nestjs/observe` z `AppModule` i z zależności do czasu kroku 10.
+- `nest-cli.json` z pluginem `@nestjs/swagger/plugin`, żeby DTO z `class-validator`
+  dostawały schematy Swaggera bez ręcznych `@ApiProperty`.
+- `oxlint` i `prettier` bez zmian; `npm run lint` i `npm run build` przechodzą na pustym
+  szkielecie.
+
+**`docker-compose.yml`.**
+
+| Usługa | Obraz | Port | Wolumen | Healthcheck |
+|---|---|---|---|---|
+| `postgres` | `postgres:17-alpine` | `5432` | `pgdata` | `pg_isready` |
+| `redis` | `redis:7-alpine` | `6379` | `redisdata` | `redis-cli ping` |
+
+Użytkownik, hasło i nazwa bazy `islanders`; `DATABASE_URL` w `.env.example` wskazuje na nie.
+Redis jest tu od razu, żeby środowisko lokalne nie zmieniało się między specami; do specu C
+nic się z nim nie łączy i health go nie sprawdza.
+
+**Swagger.** `setupSwagger(app)` w `infra/swagger/` rejestruje dokument pod `/api/docs`
+(UI) i `/api/docs-json`, z `addBearerAuth()` i tagami po modułach (`auth`, `worlds`,
+`settlements`, `fleets`, `health`). Włączany tylko gdy `SWAGGER_ENABLED=true`. Każdy
+kontroler dostaje `@ApiTags`, trasy chronione `@ApiBearerAuth()`, odpowiedzi błędów
+`@ApiResponse` dla kodów z sekcji 11. Swagger dokumentuje, nie definiuje kontraktu:
+kształt JSON-a nadal dyktuje klient, a testy e2e sprawdzają odpowiedzi, nie schemat.
+
+**Szkielet modułów.** Puste, zarejestrowane w `AppModule` moduły `HealthModule`,
+`AuthModule`, `PlayersModule`, `WorldsModule`, `SettlementsModule`, `FleetsModule`, każdy
+z kontrolerem bez tras poza `health`, oraz `DbModule` z providerem połączenia (bez tabel).
+Katalogi `src/domain/*` powstają puste z plikiem `index.ts`. Test e2e Etapu 0 startuje
+aplikację na Testcontainers i sprawdza `GET /api/v1/health` → 200 oraz obecność
+`/api/docs-json` przy włączonej fladze i 404 przy wyłączonej.
 
 Migracje są generowane z definicji schematu (`npm run db:generate`), commitowane
 w `drizzle/` i uruchamiane programowo migratorem Drizzle: `npm run db:migrate` lokalnie,
 a w e2e na świeżym kontenerze przed startem aplikacji. Aplikacja nie migruje sama przy
 starcie.
 
-Skrypty npm: `db:generate`, `db:migrate`, `world:create`, plus istniejące `build`,
-`start*`, `lint`, `test`, `test:e2e`.
+Skrypty npm: `db:generate`, `db:migrate`, `world:create`, `compose:up` (`docker compose up -d`),
+`compose:down`, plus istniejące `build`, `start*`, `lint`, `test`, `test:e2e`.
 
 ## 5. Geografia (`domain/geography`)
 
@@ -420,14 +470,18 @@ na cały przebieg, migracje przed startem, `supertest`):
 - floty: wiersz `ATTACK` wstawiony SQL-em na osadę gracza jest widoczny dla celu bez
   `ships` i `cargo`, a wiersz `TRANSPORT` cudzy nie jest widoczny;
 - `X-Server-Time` na każdej odpowiedzi, `serverTime` w `state` i `join`;
+- Etap 0: `GET /api/v1/health` → 200; `/api/docs-json` → 200 przy `SWAGGER_ENABLED=true`
+  i 404 przy `false`; start aplikacji bez `JWT_SECRET` kończy się błędem walidacji env;
 - 429 po przekroczeniu limitu `login`;
 - baza: `INSERT` do `buildings` z `SAWMILL` na osadzie `VOLCANIC` kończy się błędem klucza
   obcego.
 
 ## 13. Kolejność implementacji
 
-1. Konfiguracja env, `docker-compose.yml`, Drizzle, schema, pierwsza migracja, health,
-   usunięcie `@nestjs/observe` z `AppModule`, e2e z Testcontainers przechodzący na `/health`.
+0. Etap 0 (sekcja 4.1): `ConfigModule` z zod, `.env.example`, `docker-compose.yml`
+   z Postgresem i Redisem, Swagger za flagą, szkielet modułów i `DbModule`, usunięcie
+   `@nestjs/observe`, `main.ts`, e2e na Testcontainers dla `/health` i `/api/docs-json`.
+1. Drizzle, schema, pierwsza migracja z `citext` i `biome_buildings`, health z pingiem bazy.
 2. `domain/geography` ze złotymi wierszami, potem pełny parity. **Dopóki parity nie jest
    zielony, nic wyżej nie powstaje.**
 3. `domain/rules`, `domain/balance`, `domain/economy`, `domain/time`.
