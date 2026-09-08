@@ -5,8 +5,9 @@ Status: zatwierdzony w brainstormingu, czeka na plan implementacji
 Źródło decyzji: `docs/api-guidelines.md` (sekcje 1–7, 9–12). Ten dokument nie powtarza
 uzasadnień z wytycznych; tam, gdzie od nich odstępuje, mówi to wprost.
 
-Terminologia zgodna z `../islanders/CONTEXT.md`. Gdzie klient i ten spec się różnią,
-wygrywa klient.
+Terminologia zgodna z `../islanders/CONTEXT.md` (w tym nowe terminy **Profile** i **Nickname**
+oraz doprecyzowane Player, Home Settlement, Incoming Fleet i Round z sesji grillowania
+2026-09-08). Gdzie klient i ten spec się różnią, wygrywa klient.
 
 ## 1. Cel i zakres
 
@@ -35,7 +36,8 @@ i metryki.
 | C | floty, kolejka BullMQ, rozstrzyganie, powrót, kolonizacja, wyprawy, atak binarny, wiatr | A, B |
 
 Luki wytycznych, które zamykają kolejne specy: formuły kosztów i czasów (B), tabela
-garnizonu (B), definicja binarnego wyniku ataku (C), częstotliwość zmian wiatru (C).
+garnizonu (B), definicja binarnego wyniku ataku (C), częstotliwość zmian wiatru (C),
+przenoszenie osady domowej po jej utracie na najstarszą pozostałą osadę (C).
 
 ## 3. Struktura kodu
 
@@ -58,7 +60,7 @@ src/
     health/         GET /health
     auth/           register, login, refresh, logout, JwtAuthGuard, @Public()
     players/        PlayersRepository
-    worlds/         GET /worlds, GET /worlds/:id/state, POST /worlds/:id/join, WorldMemberGuard, HomeIslandPicker
+    worlds/         GET /worlds, GET /worlds/:id/state, POST /worlds/:id/join, ProfilesRepository, ProfileGuard, WorldWritableGuard, HomeIslandPicker
     settlements/    GET /worlds/:id/settlements[?bbox], SettlementViews
     fleets/         GET /worlds/:id/fleets, FleetViews
   cli/
@@ -207,8 +209,8 @@ Typy wyliczeniowe Postgresa: `world_status`, `biome_type`, `building_type`, `mis
 | Tabela | Klucz | Kolumny | Uwagi |
 |---|---|---|---|
 | `worlds` | `id serial` | `seed integer` CHECK `0 ≤ seed ≤ 2147483647`, `width`, `height`, `wind_x`, `wind_y` (`double precision`), `status world_status`, `created_at` | W JSON `id` jako string |
-| `players` | `id serial` | `email citext` unikalny, `password_hash`, `created_at` | `ownerId` u klienta jest `int` |
-| `world_players` | `(world_id, player_id)` | `home_x`, `home_y`, `joined_at` | |
+| `players` | `id serial` | `email citext` unikalny, `nickname citext` unikalny, `password_hash`, `created_at` | `ownerId` u klienta jest `int`; `nickname` to jedyna publiczna informacja o koncie |
+| `profiles` | `(world_id, player_id)` | `home_x`, `home_y` (nullable), `joined_at` | Profile ze słownika; `NULL` w `home_*` oznacza profil bez osad (przenoszenie po stracie należy do C) |
 | `settlements` | `(world_id, x, y)` | `owner_id`, `name`, `biome biome_type`, `wood, stone, food, iron, sulfur numeric(14,4)`, `population integer`, `last_sync_at timestamptz`, `founded_at` | bez `id`; indeks `(world_id, owner_id)` |
 | `biome_buildings` | `(biome, type)` | — | 18 wierszy wstawianych migracją |
 | `buildings` | `(world_id, x, y, type)` | `biome biome_type`, `level integer` CHECK `≥ 0` | klucze obce niżej |
@@ -235,33 +237,47 @@ populacji.
 
 | Endpoint | Ciało | Odpowiedź |
 |---|---|---|
-| `POST /auth/register` | `{ email, password }` | `201 { playerId, accessToken, refreshToken }` |
-| `POST /auth/login` | `{ email, password }` | `200 { playerId, accessToken, refreshToken }` |
+| `POST /auth/register` | `{ email, nickname, password }` | `201 { playerId, nickname, accessToken, refreshToken }` |
+| `POST /auth/login` | `{ email, password }` | `200 { playerId, nickname, accessToken, refreshToken }` |
 | `POST /auth/refresh` | `{ refreshToken }` | `200 { accessToken, refreshToken }` |
 | `POST /auth/logout` | `{ refreshToken }` | `204` |
 
 - Access token: JWT HS256, `sub = playerId`, ważny `JWT_ACCESS_TTL`.
 - Refresh token: 32 losowe bajty base64url; w bazie tylko SHA-256; ważny `JWT_REFRESH_TTL`.
-  `refresh` rotuje: stary wiersz dostaje `revoked_at`, powstaje nowy. Użycie tokenu już
-  unieważnionego zwraca 401 i unieważnia wszystkie tokeny gracza (sygnał kradzieży).
-- Hasło min. 8 znaków; argon2id z domyślnymi parametrami biblioteki. E-mail normalizowany
-  do małych liter przy porównaniu (`citext`).
-- Zajęty e-mail → 409. Złe dane logowania → 401 bez ujawniania, czy konto istnieje.
+  `refresh` rotuje: stary wiersz dostaje `revoked_at`, powstaje nowy. **Okno łaski 60 s:**
+  token unieważniony rotacją mniej niż 60 s temu jest nadal akceptowany i rotuje ponownie,
+  bo na telefonie odpowiedź z nową parą regularnie ginie po drodze; niedoręczona para wygasa
+  sama. Po oknie zwykłe 401, bez unieważniania pozostałych tokenów gracza. Wiele urządzeń
+  to wiele równoległych wierszy.
+- Hasło min. 8 znaków; argon2id z domyślnymi parametrami biblioteki. E-mail i pseudonim
+  porównywane bez rozróżniania wielkości liter (`citext`).
+- `nickname`: 3–20 znaków, litery, cyfry, `_` i `-`, po przycięciu białych znaków. Wymagany
+  przy rejestracji, bez zmiany w A. Zwracany innym graczom jako `ownerName`.
+- Zajęty e-mail lub pseudonim → 409 z polem `field` w komunikacie. Złe dane logowania → 401
+  bez ujawniania, czy konto istnieje.
+- Konto to wyłącznie e-mail i hasło; kont anonimowych i dostawców zewnętrznych nie ma w A.
 
 **Strażnicy.** `JwtAuthGuard` globalny, wyłączany `@Public()` na `/auth/*` i `/health`.
-`WorldMemberGuard` na wszystkim pod `/worlds/:id/` poza `join`: 404 gdy świat nie istnieje,
-403 gdy brak wiersza `world_players`; dopina `{ worldRow, playerId, home }` do żądania.
+`ProfileGuard` na wszystkim pod `/worlds/:id/` poza `join`: 404 gdy świat nie istnieje,
+403 gdy brak wiersza `profiles`; dopina `{ world, playerId, profile }` do żądania. Nie
+sprawdza statusu świata, bo odczyt działa na każdym statusie.
+`WorldWritableGuard` przepuszcza tylko światy `OPEN` i `CLOSED`, na `ENDED` zwraca 409.
+W A nie ma jeszcze trasy, która go potrzebuje; powstaje z testem jednostkowym na trzech
+statusach, a specy B i C zakładają go na każdym zapisie.
 
 ## 9. Światy i dołączanie
 
 | Endpoint | Odpowiedź |
 |---|---|
 | `GET /worlds` | `[{ id, seed, size: {w, h}, wind: {x, y}, status, joined }]` |
-| `GET /worlds/:id/state` | `{ id, seed, size, wind, status, playerId, homeSettlement: {x, y}, serverTime }` |
+| `GET /worlds/:id/state` | `{ id, seed, size, wind, status, playerId, homeSettlement: {x, y} \| null, serverTime }` |
 | `POST /worlds/:id/join` `{ name? }` | `201` pełna osada domowa (sekcja 10.2) + `serverTime` |
 
-`join`: świat musi być `OPEN` (inaczej 409); powtórne dołączenie tym samym kontem → 409;
-`name` domyślnie „Osada”, 1–32 znaki po przycięciu białych znaków.
+`join`: świat musi być `OPEN` (inaczej 409; `CLOSED` nie przyjmuje nowych profili, gra
+trwa); powtórne dołączenie tym samym kontem → 409, a klient po 409 woła `state`, żeby
+poznać osadę domową; `name` domyślnie „Osada”, 1–32 znaki po przycięciu białych znaków.
+`homeSettlement` w `state` jest `null` dla profilu bez osad; w A nie da się tego osiągnąć,
+ale klient ma to obsłużyć, bo spec C przenosi wskaźnik po utracie osady domowej.
 
 ### 9.1 Wybór wyspy domowej (`HomeIslandPicker`)
 
@@ -275,7 +291,7 @@ Czysta funkcja `pickHomeIsland(world, isTaken: (x, y) => boolean, random)`:
    (`crypto.randomInt`).
 4. Brak kandydatek → `null`, a endpoint zwraca 409 „świat pełny”.
 
-Zapis w jednej transakcji: `world_players`, `settlements` (pakiet startowy,
+Zapis w jednej transakcji: `profiles`, `settlements` (pakiet startowy,
 `last_sync_at = now`, `population 0`), sześć wierszy `buildings` ze `STARTING_BUILDINGS`.
 Naruszenie klucza `settlements` (dwa równoległe `join` wylosowały tę samą wyspę) cofa
 transakcję i powtarza od kroku 1, maksymalnie trzy razy; potem 409.
@@ -306,16 +322,17 @@ Wybór widoku w jednym miejscu: `viewFor(row, buildings, requesterId, now)`.
 `publicView(row)`:
 
 ```json
-{ "world": "1", "x": 81, "y": 73, "ownerId": 9, "name": "Szara Skała" }
+{ "world": "1", "x": 81, "y": 73, "ownerId": 9, "ownerName": "szara_skala", "name": "Szara Skała" }
 ```
 
-Bez klucza `resources` — jego brak jest dla klienta sygnałem osady cudzej.
+Bez klucza `resources` — jego brak jest dla klienta sygnałem osady cudzej. `ownerName` to
+`players.nickname` właściciela, dołączany złączeniem w tym samym zapytaniu.
 
 `ownView(row, buildings, now)` — kształt z sekcji 4.2 specu klienta:
 
 ```json
 {
-  "world": "1", "x": 80, "y": 73, "ownerId": 7, "name": "Koralowa",
+  "world": "1", "x": 80, "y": 73, "ownerId": 7, "ownerName": "sebastian", "name": "Koralowa",
   "resources": { "wood": 500, "stone": 200, "food": 1000, "iron": 40, "sulfur": 0 },
   "productionPerHour": { "wood": 60, "stone": 0, "food": 80, "iron": 0, "sulfur": 0 },
   "capacity": 2000, "population": 0, "populationMax": 100,
@@ -330,7 +347,10 @@ Bez klucza `resources` — jego brak jest dla klienta sygnałem osady cudzej.
 ### 10.3 Widoki floty (`FleetViews`)
 
 `ownView` to pełny kształt z sekcji 4.3 specu klienta. `incomingView` to
-`{ id, world, ownerId, mission, from, to, departAt, arriveAt }` bez `ships` i `cargo`.
+`{ id, world, ownerId, ownerName, mission, from, to, departAt, arriveAt }` bez `ships`
+i `cargo`. `departAt` jest celowo widoczny: bez niego klient rysuje wrogą flotę już na celu
+(`Fleet.progress()` daje 1.0), a wyciek to wyłącznie klasa prędkości, nie skład. Słownik
+Incoming Fleet mówi to wprost.
 Zapytanie: `owner_id = :me OR (mission = 'ATTACK' AND (to_x, to_y) IN (osady gracza))`,
 `resolved_at IS NULL`. W A tabela jest pusta; zapytanie i projekcje są pokryte e2e na
 wierszach wstawionych bezpośrednio do bazy.
@@ -359,10 +379,10 @@ Koperta Nest `{ statusCode, error, message }`.
 | Kod | Kiedy |
 |---|---|
 | 400 | walidacja DTO, zły `bbox` |
-| 401 | brak, zły, wygasły lub unieważniony token; złe dane logowania |
+| 401 | brak, zły lub wygasły token; refresh token unieważniony ponad 60 s temu; złe dane logowania |
 | 403 | gracz nie jest członkiem świata |
 | 404 | świat nie istnieje |
-| 409 | zajęty e-mail; powtórne dołączenie; świat nie `OPEN`; świat pełny |
+| 409 | zajęty e-mail lub pseudonim; powtórne dołączenie; `join` do świata nie `OPEN`; świat pełny; zapis na świecie `ENDED` (`WorldWritableGuard`) |
 | 429 | limit zapytań |
 | 500 | błąd bazy lub nieoczekiwany wyjątek; szczegóły tylko w logu z identyfikatorem żądania |
 
@@ -378,21 +398,24 @@ Twierdzenie bez wyjścia komendy nie jest dowodem.
 - balans: produkcja zasobu spoza biomu to 0; pojemność i limit populacji dla poziomów 0–3;
 - `currentResources`: 0 h, 2 h, obcięcie do pojemności, ujemna delta, brak produkcji;
 - `SettlementViews`: `publicView` nie ma klucza `resources`; `ownView` ma 6 slotów;
-- `FleetViews`: `incomingView` bez `ships` i `cargo`;
+- `FleetViews`: `incomingView` bez `ships` i `cargo`, z `departAt` i `ownerName`;
+- `WorldWritableGuard`: przepuszcza `OPEN` i `CLOSED`, odrzuca `ENDED` z 409;
+- `SettlementViews`: `ownerName` obecny w obu widokach;
 - `pickHomeIsland`: fałszywy `isTaken`, sprawdzenie biomu, granic mapy, pierścienia,
   `null` dla pełnej mapy.
 
 **E2E** (`npm run test:e2e`, `**/*.e2e-spec.ts`, jeden kontener Postgres z Testcontainers
 na cały przebieg, migracje przed startem, `supertest`):
 
-- auth: rejestracja, logowanie, rotacja refresh tokenu, reuse unieważnionego → 401
-  i unieważnienie pozostałych, logout, zajęty e-mail → 409;
+- auth: rejestracja z pseudonimem, logowanie, rotacja refresh tokenu, reuse w oknie łaski
+  → 200 z nową parą (zegar sterowany), reuse po oknie → 401 bez unieważniania pozostałych
+  urządzeń, logout, zajęty e-mail → 409, zajęty pseudonim inną wielkością liter → 409;
 - świat: `world:create` przez serwis, `join` daje osadę, dla której `islandAt` zwraca wyspę
   `TROPICAL` lub `TEMPERATE`, z budynkami startowymi; powtórny `join` → 409;
   `join` do świata `CLOSED` → 409; `GET /worlds/:id/state` bez członkostwa → 403;
 - reguły informacyjne: dwa konta na jednym świecie; `bbox` obejmujący obie osady zwraca
-  własną z `resources`, cudzą bez tego klucza; `GET /worlds/:id/settlements` bez bbox
-  zwraca tylko własne;
+  własną z `resources`, cudzą bez tego klucza, obie z `ownerName`; `GET /worlds/:id/settlements`
+  bez bbox zwraca tylko własne;
 - `bbox` o powierzchni > 4096 → 400;
 - floty: wiersz `ATTACK` wstawiony SQL-em na osadę gracza jest widoczny dla celu bez
   `ships` i `cargo`, a wiersz `TRANSPORT` cudzy nie jest widoczny;
@@ -409,7 +432,8 @@ na cały przebieg, migracje przed startem, `supertest`):
    zielony, nic wyżej nie powstaje.**
 3. `domain/rules`, `domain/balance`, `domain/economy`, `domain/time`.
 4. `auth` i `players` z e2e.
-5. `worlds`: lista, `state`, `WorldMemberGuard`, `HomeIslandPicker`, `join`, `world:create`.
+5. `worlds`: lista, `state`, `ProfileGuard`, `WorldWritableGuard`, `HomeIslandPicker`, `join`,
+   `world:create`.
 6. `settlements`: widoki, odczyt własnych i po `bbox`, e2e reguł informacyjnych.
 7. `fleets`: zapytanie i projekcje, e2e na wierszach z SQL.
 8. `ServerTimeInterceptor`, throttler, filtr błędów, e2e nagłówka i 429.
