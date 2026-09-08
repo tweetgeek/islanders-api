@@ -123,8 +123,9 @@ Pliki do usunięcia: `src/app.controller.ts`, `src/app.controller.spec.ts`, `src
 ```bash
 npm install zod@^4 drizzle-orm@^0.45 postgres@^3.4 argon2@^0.45 @nestjs/jwt@^12 @nestjs/swagger@^12 class-validator@^0.15 class-transformer@^0.5
 npm install -D drizzle-kit@^0.31 @testcontainers/postgresql@^12
-npm uninstall @nestjs/observe
 ```
+
+`@nestjs/observe` zostaje jeszcze zainstalowany: `src/app.module.ts` i `src/main.ts` wciąż go importują, a odinstalowanie go teraz zepsułoby `npm run build` przed commitem. Usuwa go Task 2, razem z przepisaniem obu plików.
 
 Oczekiwane: brak `ERESOLVE`, `package-lock.json` zaktualizowany.
 
@@ -333,11 +334,14 @@ git commit -m "Add zod-validated environment config module"
 **Interfaces:**
 - Produces: `AppModule.forRoot(env: Env): DynamicModule`; `configureApp(app: INestApplication, env: Env): void` (prefix, ValidationPipe, shutdown hooks; Swagger i interceptory dochodzą w Task 3 i 15).
 
-- [ ] **Step 1: Usuń boilerplate**
+- [ ] **Step 1: Usuń boilerplate i `@nestjs/observe`**
 
 ```bash
 git rm -q src/app.controller.ts src/app.controller.spec.ts src/app.service.ts test/app.e2e-spec.ts
+npm uninstall @nestjs/observe
 ```
+
+Po tym kroku `src/app.module.ts` i `src/main.ts` nie kompilują się, dopóki nie przepiszesz ich w krokach 4 i 5 — to jedyny moment w planie, gdy drzewo jest niekompletne, i domyka się przed commitem w kroku 9.
 
 - [ ] **Step 2: Napisz `docker-compose.yml`**
 
@@ -480,8 +484,16 @@ Expected: `dist/main.js` istnieje, oba kontenery `healthy`.
 
 - [ ] **Step 8: Sprawdź start bez `.env`**
 
-Run: `JWT_SECRET=$(printf 'x%.0s' {1..32}) DATABASE_URL=postgres://islanders:islanders@localhost:5432/islanders node dist/main.js & sleep 2; curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/api/v1/health; kill %1`
-Expected: `404` (aplikacja startuje, health dojdzie w Task 3). Następnie `node dist/main.js` bez zmiennych: wyjście zaczyna się od `Niepoprawna konfiguracja środowiska:` i zawiera `JWT_SECRET`, kod wyjścia 1.
+```bash
+JWT_SECRET=$(printf 'x%.0s' {1..32}) DATABASE_URL=postgres://islanders:islanders@localhost:5432/islanders node dist/main.js &
+APP_PID=$!
+sleep 2
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3000/api/v1/health
+kill $APP_PID
+env -u JWT_SECRET -u DATABASE_URL node dist/main.js; echo "kod wyjścia: $?"
+```
+
+Expected: najpierw `404` (aplikacja startuje, health dojdzie w Task 3), potem wyjście zaczynające się od `Niepoprawna konfiguracja środowiska:`, zawierające `JWT_SECRET`, i `kod wyjścia: 1`.
 
 - [ ] **Step 9: Commit**
 
@@ -496,7 +508,7 @@ git add -A && git commit -m "Bootstrap Nest app from validated env, add docker-c
 **Files:**
 - Create: `src/modules/health/health.controller.ts`, `src/modules/health/health.module.ts`, `src/infra/swagger/setup-swagger.ts`, `test/support/global-setup.ts`, `test/support/vitest.d.ts`, `test/support/test-app.ts`, `test/health.e2e-spec.ts`
 - Create (puste moduły): `src/modules/auth/auth.module.ts`, `src/modules/players/players.module.ts`, `src/modules/worlds/worlds.module.ts`, `src/modules/settlements/settlements.module.ts`, `src/modules/fleets/fleets.module.ts`, `src/domain/{time,geography,rules,balance,economy}/index.ts`
-- Modify: `src/app.module.ts`, `src/infra/http/configure-app.ts`, `vitest.config.e2e.ts`, `nest-cli.json`
+- Modify: `src/app.module.ts`, `src/infra/http/configure-app.ts`, `vitest.config.ts`, `vitest.config.e2e.ts`, `nest-cli.json`
 
 **Interfaces:**
 - Produces: `createTestApp(overrides?: TestEnvOverrides): Promise<INestApplication>` z `test/support/test-app.ts`; `inject('databaseUrl')` w e2e; `setupSwagger(app)`.
@@ -613,12 +625,20 @@ export default defineConfig({
     globals: true,
     root: './',
     include: ['**/*.e2e-spec.ts'],
+    setupFiles: ['reflect-metadata'],
     globalSetup: ['./test/support/global-setup.ts'],
     fileParallelism: false,
     testTimeout: 30_000,
     hookTimeout: 180_000,
   },
 });
+```
+
+W `vitest.config.ts` (testy jednostkowe) dodaj tę samą linię `setupFiles`, bo klasy z dekoratorami Nest (`@Injectable()`) wywołują `Reflect.defineMetadata` już przy imporcie modułu:
+
+```ts
+    include: ['**/*.spec.ts'],
+    setupFiles: ['reflect-metadata'],
 ```
 
 - [ ] **Step 3: Uruchom e2e i potwierdź porażkę**
@@ -3157,7 +3177,8 @@ describe('worlds (e2e)', () => {
 
     await app.get(ProfilesRepository).create(app.get<Db>(DB), { worldId: world.id, playerId: p.playerId, homeX: null, homeY: null });
     const res = await http().get(`/api/v1/worlds/${world.id}/state`).set('Authorization', bearer(p.accessToken)).expect(200);
-    expect(res.body).toEqual({
+    // toMatchObject, nie toEqual: Task 16 dołoży do odpowiedzi-obiektów pole `serverTime`, które sprawdza http.e2e-spec.ts
+    expect(res.body).toMatchObject({
       id: String(world.id),
       seed: 1337,
       size: { w: 200, h: 200 },
@@ -3165,7 +3186,6 @@ describe('worlds (e2e)', () => {
       status: 'OPEN',
       playerId: p.playerId,
       homeSettlement: null,
-      serverTime: '2026-09-08T12:00:00.000Z',
     });
   });
 
@@ -3804,7 +3824,7 @@ export function parseBbox(raw: string, world: { width: number; height: number })
 
 ```ts
 import { Inject, Injectable } from '@nestjs/common';
-import { and, between, eq, inArray } from 'drizzle-orm';
+import { and, between, eq } from 'drizzle-orm';
 import type { Biome, Building, BuildingLevels, Resources } from '../../domain/rules/index.js';
 import { DB, type Db, type DbClient } from '../../infra/db/db.module.js';
 import { buildings, players, settlements } from '../../infra/db/schema/index.js';
@@ -3919,16 +3939,20 @@ export class SettlementsRepository {
       lastSyncAt: r.lastSyncAt,
     }));
 
+    // Złączenie z tym samym warunkiem co osady: `inArray` po x i po y osobno dałoby iloczyn kartezjański
+    // i wciągnąłby budynki cudzych osad o współrzędnych mieszanych z dwóch różnych wierszy.
     const levels = await this.db
       .select({ x: buildings.x, y: buildings.y, type: buildings.type, level: buildings.level })
       .from(buildings)
-      .where(
+      .innerJoin(
+        settlements,
         and(
-          eq(buildings.worldId, bases[0].worldId),
-          inArray(buildings.x, [...new Set(bases.map((b) => b.x))]),
-          inArray(buildings.y, [...new Set(bases.map((b) => b.y))]),
+          eq(settlements.worldId, buildings.worldId),
+          eq(settlements.x, buildings.x),
+          eq(settlements.y, buildings.y),
         ),
-      );
+      )
+      .where(where);
     const byCoord = new Map<string, BuildingLevels>();
     for (const l of levels) {
       const key = coordKey(l.x, l.y);
@@ -4240,7 +4264,6 @@ Dopisz do `test/worlds.e2e-spec.ts` (w tym samym `describe`):
       population: 0,
       populationMax: 100,
       lastSyncAt: '2026-09-08T12:00:00.000Z',
-      serverTime: '2026-09-08T12:00:00.000Z',
     });
     expect(body.buildings).toMatchObject({ TOWN_HALL: 1, WAREHOUSE: 1, BARRACKS: 0, SHIPYARD: 0 });
     expect(Object.keys(body.buildings as object)).toHaveLength(6);
