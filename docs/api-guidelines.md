@@ -156,13 +156,26 @@ Promień wyspy i reguły znaleziska (rekurencyjne hasze z solami `(7, 11)`, `(3,
 
 ### 4.5 Jak udowodnić zgodność
 
-Nie ufaj temu, że obie implementacje wyglądają tak samo. Zrób test porównawczy:
+Nie ufaj temu, że obie implementacje wyglądają tak samo. Plik referencyjny **już istnieje**
+w repozytorium klienta:
 
-1. Klient generuje plik z wynikami dla siatki co najmniej 200 × 200 komórek i kilku seedów:
-   dla każdej komórki `hash_cell`, `land`, `biome`, a dla wysp `radius` i zawartość znaleziska.
-2. Backend ma test, który czyta ten sam plik i sprawdza każdą pozycję.
-3. Plik leży w obu repozytoriach albo w jednym, z którego drugie go pobiera. Jest artefaktem
-   kontraktu, nie plikiem tymczasowym.
+- `contract/world-parity.json` — siatka 200 × 200 dla seedów 1337 i 99999, czyli 80 000 komórek.
+  Dla każdej: `hash`, `land`, `biome`, `isIsland`, a dla wysp `biomeType`, `radius` i zawartość
+  znaleziska.
+- `contract/README.md` — po co jest, jak go zregenerować i co znaczy jego zmiana.
+- Generowany przez `./run_parity.sh`, deterministycznie: powtórzony przebieg daje plik
+  bajt w bajt identyczny.
+
+Pierwszym testem backendu ma być przejście tego pliku komórka po komórce.
+
+**Porównuj dokładną równością, nigdy tolerancją.** Tolerancja przepuściłaby dokładnie ten
+rodzaj dryfu, dla którego ten plik powstał. Liczby są zapisane z pełną precyzją binary64:
+klient ma własny formatter na siedemnaście cyfr znaczących, bo standardowe funkcje Godota
+gubiły ogon przy wartościach bliskich zeru — pierwsza wersja tego pliku miała ten błąd
+w 11 228 z 80 000 komórek i poprawna implementacja backendu oblałaby na niej test.
+
+Zgodność międzyjęzykowa jest już potwierdzona: niezależna implementacja w JavaScripcie
+z `BigInt` przeszła wszystkie 80 000 komórek z zerem rozbieżności przy porównaniu przez `===`.
 
 Ten test jest ważniejszy niż jakikolwiek inny test w backendzie. Bez niego rozjazd wyjdzie
 dopiero wtedy, gdy gracz zobaczy osadę na morzu.
