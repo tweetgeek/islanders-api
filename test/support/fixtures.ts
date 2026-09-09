@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { WorldsService } from '../../src/modules/worlds/worlds.service.js';
+import type { WorldRow } from '../../src/modules/worlds/worlds.repository.js';
 
 export function uniqueSuffix(): string {
   return randomUUID().replace(/-/g, '').slice(0, 10);
@@ -39,4 +41,26 @@ export async function registerPlayer(
     .send(body)
     .expect(201);
   return { ...res.body, email: body.email, password: body.password };
+}
+
+/** Tworzy świat tak samo jak `npm run world:create`; domyślnie seed 1337, 200×200, wiatr (0.3, -0.1). */
+export async function createWorld(
+  app: INestApplication,
+  overrides: Partial<{
+    seed: number;
+    width: number;
+    height: number;
+    windX: number;
+    windY: number;
+    status: 'OPEN' | 'CLOSED' | 'ENDED';
+  }> = {},
+): Promise<WorldRow> {
+  return app.get(WorldsService).create({
+    seed: 1337,
+    width: 200,
+    height: 200,
+    windX: 0.3,
+    windY: -0.1,
+    ...overrides,
+  });
 }
