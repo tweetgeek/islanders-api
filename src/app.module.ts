@@ -1,6 +1,7 @@
 import { DynamicModule, Module } from '@nestjs/common';
 import { AppConfigModule } from './infra/config/config.module.js';
 import type { Env } from './infra/config/env.js';
+import { DbModule } from './infra/db/db.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { PlayersModule } from './modules/players/players.module.js';
@@ -16,6 +17,7 @@ export class AppModule {
       module: AppModule,
       imports: [
         AppConfigModule.forRoot(env),
+        DbModule,
         HealthModule,
         AuthModule,
         PlayersModule,

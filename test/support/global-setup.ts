@@ -3,6 +3,7 @@ import {
   StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
 import type { TestProject } from 'vitest/node';
+import { runMigrations } from '../../src/infra/db/migrate.js';
 
 let container: StartedPostgreSqlContainer | undefined;
 
@@ -12,6 +13,7 @@ export async function setup(project: TestProject): Promise<void> {
   const url = container.getConnectionUri();
   project.provide('databaseUrl', url);
   process.env.DATABASE_URL = url;
+  await runMigrations(url);
 }
 
 export async function teardown(): Promise<void> {
