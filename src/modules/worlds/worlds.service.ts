@@ -44,8 +44,15 @@ export class WorldsService {
     ) {
       throw new RangeError('seed musi być liczbą całkowitą w [0, 2147483647]');
     }
-    if (input.width < 1 || input.height < 1) {
-      throw new RangeError('width i height muszą być dodatnie');
+    if (
+      !Number.isInteger(input.width) ||
+      !Number.isInteger(input.height) ||
+      input.width < 1 ||
+      input.height < 1
+    ) {
+      throw new RangeError(
+        'width i height muszą być dodatnimi liczbami całkowitymi',
+      );
     }
     return this.worlds.create(input);
   }
