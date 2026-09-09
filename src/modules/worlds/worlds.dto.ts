@@ -1,4 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
+import { IsOptional, IsString, Length } from 'class-validator';
 
 class SizeDto {
   @ApiProperty() w!: number;
@@ -28,4 +30,20 @@ export class WorldStateDto {
   @ApiPropertyOptional({ type: VectorDto, nullable: true })
   homeSettlement!: VectorDto | null;
   @ApiProperty({ example: '2026-09-08T12:00:00.000Z' }) serverTime!: string;
+}
+
+export class JoinWorldDto {
+  @ApiPropertyOptional({
+    example: 'Koralowa',
+    minLength: 1,
+    maxLength: 32,
+    description: 'Domyślnie „Osada”',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @Length(1, 32)
+  name?: string;
 }

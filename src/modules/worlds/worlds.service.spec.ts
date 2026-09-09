@@ -1,3 +1,6 @@
+import type { Clock } from '../../domain/time/index.js';
+import type { Db } from '../../infra/db/db.module.js';
+import type { SettlementsRepository } from '../settlements/settlements.repository.js';
 import type { ProfilesRepository } from './profiles.repository.js';
 import type {
   CreateWorldInput,
@@ -21,7 +24,14 @@ function makeService() {
     },
   } as unknown as WorldsRepository;
   const profiles = {} as unknown as ProfilesRepository;
-  return { service: new WorldsService(worlds, profiles), created };
+  // `create` nie dotyka osad, bazy ani zegara — atrapy tylko po to, żeby zbudować serwis.
+  const settlements = {} as unknown as SettlementsRepository;
+  const db = {} as unknown as Db;
+  const clock: Clock = { now: () => new Date('2026-09-08T12:00:00.000Z') };
+  return {
+    service: new WorldsService(worlds, profiles, settlements, db, clock),
+    created,
+  };
 }
 
 const VALID: CreateWorldInput = {

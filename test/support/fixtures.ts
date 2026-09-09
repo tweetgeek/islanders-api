@@ -64,3 +64,18 @@ export async function createWorld(
     ...overrides,
   });
 }
+
+/** POST /worlds/:id/join; zwraca ciało odpowiedzi (własna osada domowa + serverTime). */
+export async function joinWorld(
+  app: INestApplication,
+  accessToken: string,
+  worldId: number,
+  name?: string,
+) {
+  const res = await request(app.getHttpServer())
+    .post(`/api/v1/worlds/${worldId}/join`)
+    .set('Authorization', bearer(accessToken))
+    .send(name === undefined ? {} : { name })
+    .expect(201);
+  return res.body as Record<string, unknown> & { x: number; y: number };
+}
