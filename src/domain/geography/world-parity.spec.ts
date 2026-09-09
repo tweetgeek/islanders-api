@@ -72,9 +72,11 @@ describe('zgodność geografii z klientem (contract/world-parity.json)', () => {
   });
 
   it('plik pokrywa co najmniej 2 światy po gridSize² komórek', () => {
+    expect(parity.gridSize).toBeGreaterThan(0);
     expect(parity.worlds.length).toBeGreaterThanOrEqual(2);
     for (const w of parity.worlds) {
       expect(w.cells).toHaveLength(parity.gridSize * parity.gridSize);
+      expect(w.cells.length).toBeGreaterThan(0);
     }
   });
 
