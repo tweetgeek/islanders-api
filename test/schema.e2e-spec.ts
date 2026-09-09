@@ -1,7 +1,10 @@
 import { INestApplication } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { DB, type Db } from '../src/infra/db/db.module.js';
-import { isForeignKeyViolation } from '../src/infra/db/pg-errors.js';
+import {
+  isForeignKeyViolation,
+  isUniqueViolation,
+} from '../src/infra/db/pg-errors.js';
 import {
   biomeBuildings,
   buildings,
@@ -99,6 +102,31 @@ describe('schemat bazy (e2e)', () => {
         .insert(buildings)
         .values({ ...base, biome: 'VOLCANIC', type: 'IRON_MINE', level: 1 }),
     ).resolves.toBeDefined();
+  });
+
+  it('e-mail w innej wielkości liter to duplikat (citext + players_email_unique)', async () => {
+    const stamp = Date.now();
+    const email = `Citext-${stamp}@Test.Local`;
+    await db
+      .insert(players)
+      .values({ email, nickname: `citext${stamp}`, passwordHash: 'x' });
+
+    // Adres celowo zapisany INNĄ wielkością liter niż wyżej — to jest dowód, że kolumna
+    // ma typ citext z migracji 0000, a nie zwykły text. Nie "upraszczaj" tego do
+    // identycznego adresu: test przestanie wtedy sprawdzać cokolwiek poza zwykłym UNIQUE.
+    const duplicate = await db
+      .insert(players)
+      .values({
+        email: email.toUpperCase(),
+        nickname: `citextinny${stamp}`,
+        passwordHash: 'x',
+      })
+      .catch((err: unknown) => err);
+
+    expect(duplicate).toMatchObject({
+      cause: { code: '23505', constraint_name: 'players_email_unique' },
+    });
+    expect(isUniqueViolation(duplicate, 'players_email_unique')).toBe(true);
   });
 
   it('CHECK odrzuca seed poza 31 bitami', async () => {
