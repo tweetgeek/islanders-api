@@ -81,7 +81,7 @@ Każda jednostka odpowiada na trzy pytania: co robi, jak jej użyć, od czego za
 
 - Node 24, NestJS 12, TypeScript 6, ESM (`"type": "module"`, importy z `.js`).
 - `drizzle-orm` + sterownik `postgres` (postgres.js), `drizzle-kit` do generowania migracji.
-- `@nestjs/config` z walidacją przez `zod`. Zmienne:
+- Własny `AppConfigModule` (token `ENV`) z walidacją przez `zod`; bez `@nestjs/config`. Zmienne:
 
 | Zmienna | Domyślnie | Uwagi |
 |---|---|---|
@@ -95,7 +95,8 @@ Każda jednostka odpowiada na trzy pytania: co robi, jak jej użyć, od czego za
 | `SWAGGER_ENABLED` | `true` poza `NODE_ENV=production`, inaczej `false` | dokumentacja pod `/api/docs` |
 | `NODE_ENV` | `development` | |
 
-- `@nestjs/jwt`, `argon2`, `@nestjs/throttler`, `@nestjs/terminus`, `class-validator`,
+- `@nestjs/jwt`, `argon2`, własny `RateLimitGuard` (bo `@nestjs/throttler` 6.5 nie deklaruje
+  zgodności z Nest 12), health przez `SELECT 1` bez `@nestjs/terminus`, `class-validator`,
   `class-transformer`, `@nestjs/swagger`.
 - Dev: `@testcontainers/postgresql`, `supertest`, `drizzle-kit`.
 - `@nestjs/observe` z kluczami-wydmuszkami wypada z `AppModule`. Wraca w kroku 10, gdy
@@ -130,6 +131,41 @@ kolejny krok musiałby przy okazji dokładać kawałek fundamentu.
 Użytkownik, hasło i nazwa bazy `islanders`; `DATABASE_URL` w `.env.example` wskazuje na nie.
 Redis jest tu od razu, żeby środowisko lokalne nie zmieniało się między specami; do specu C
 nic się z nim nie łączy i health go nie sprawdza.
+
+Publikowane porty (`5432`, `6379` w tabeli wyżej) są nadpisywalne zmiennymi `POSTGRES_PORT`
+i `REDIS_PORT` z domyślnymi wartościami zgodnymi ze specem (odstępstwo, patrz 4.2 pkt 6) —
+na maszynach deweloperskich bywają zajęte przez inne projekty.
+
+### 4.2 Odstępstwa od specyfikacji
+
+Implementacja świadomie odeszła od tego, co mówi sekcja 4 i 10.4, w sześciu miejscach.
+Powody techniczne, nie stylistyczne — poniższe zastępuje wyliczenie z linii wyżej:
+
+1. Zamiast `@nestjs/throttler` — własny `RateLimitGuard`
+   (`src/infra/http/rate-limit.guard.ts`). Powód: `@nestjs/throttler` 6.5 deklaruje
+   zgodność najwyżej z Nest 11, a projekt stoi na Nest 12; instalacja kończy się
+   konfliktem zależności. Limity pochodzą ze zmiennych `RATE_LIMIT_AUTH_PER_MINUTE`
+   i `RATE_LIMIT_PLAYER_PER_MINUTE` (patrz 10.5).
+2. Zamiast `@nestjs/config` — własny `AppConfigModule` z tokenem `ENV` i walidacją przez
+   `zod` (`src/infra/config/`). Powód: pełne typowanie bez `ConfigService.get` i mniej
+   zależności.
+3. Zamiast `@nestjs/terminus` — kontroler zdrowia z zapytaniem kontrolnym do bazy
+   (`src/modules/health/health.controller.ts`). Powód: jeden wskaźnik nie uzasadnia
+   biblioteki.
+4. Nagłówek `X-Server-Time` ustawia middleware Express
+   (`src/infra/http/server-time.middleware.ts`), nie interceptor. Powód: interceptory
+   działają po strażnikach i tylko na dopasowanych trasach, więc nie docierają do 401
+   ze strażnika ani do 404 bez trasy. `ServerTimeInterceptor` odpowiada wyłącznie za pole
+   `serverTime` w odpowiedziach będących zwykłymi obiektami — patrz sekcja 10.4, gdzie ten
+   podział jest opisany dokładnie.
+5. `isUniqueViolation` i `isForeignKeyViolation` (`src/infra/db/pg-errors.ts`) przechodzą
+   łańcuch `cause` zamiast czytać `err.code` z wierzchu błędu. Powód: `drizzle-orm` 0.45
+   opakowuje każdy błąd sterownika w `DrizzleQueryError` i zostawia oryginalny
+   `PostgresError` pod `cause`, więc odczyt z wierzchu zwracałby fałsz dla każdego błędu.
+6. Publikowane porty w `docker-compose.yml` są nadpisywalne przez `POSTGRES_PORT`
+   i `REDIS_PORT`, z domyślnymi wartościami zgodnymi z tabelą wyżej. Powód: na maszynach
+   deweloperskich te porty bywają zajęte przez inne projekty, a `compose:up` z flagą
+   oczekiwania pada wtedy na całości mimo zdrowej bazy.
 
 **Swagger.** `setupSwagger(app)` w `infra/swagger/` rejestruje dokument pod `/api/docs`
 (UI) i `/api/docs-json`, z `addBearerAuth()` i tagami po modułach (`auth`, `worlds`,
@@ -409,13 +445,14 @@ wierszach wstawionych bezpośrednio do bazy.
 
 `Clock` wstrzykiwalny (`now(): Date`); produkcja `Date.now()`, testy sterowany. Wszystkie
 znaczniki przez `toISOString()` (klient obcina ułamki sekund, to potwierdzone testem
-`test_parse_iso8601_with_milliseconds`). `ServerTimeInterceptor` dodaje nagłówek
-`X-Server-Time` do każdej odpowiedzi i pole `serverTime` do każdej odpowiedzi będącej
-obiektem; tablice zostają tablicami.
+`test_parse_iso8601_with_milliseconds`). Nagłówek `X-Server-Time` ustawia middleware Express
+(`serverTimeMiddleware`, nie interceptor — odstępstwo, patrz 4.2 pkt 4), więc trafia na
+każdą odpowiedź, także 401 ze strażnika i 404 bez trasy. `ServerTimeInterceptor` dokłada
+pole `serverTime` do każdej odpowiedzi będącej zwykłym obiektem; tablice zostają tablicami.
 
 ### 10.5 Limity
 
-`@nestjs/throttler`, magazyn w pamięci procesu (Redis dojdzie w C):
+Własny `RateLimitGuard` (stałe okno w pamięci procesu; Redis dojdzie w C):
 
 - trasy uwierzytelnione: 120 żądań / minutę na `playerId`;
 - `register`, `login`, `refresh`: 10 żądań / minutę na adres IP.
@@ -490,7 +527,8 @@ na cały przebieg, migracje przed startem, `supertest`):
    `world:create`.
 6. `settlements`: widoki, odczyt własnych i po `bbox`, e2e reguł informacyjnych.
 7. `fleets`: zapytanie i projekcje, e2e na wierszach z SQL.
-8. `ServerTimeInterceptor`, throttler, filtr błędów, e2e nagłówka i 429.
+8. `ServerTimeInterceptor` (i middleware nagłówka), `RateLimitGuard`, filtr błędów, e2e
+   nagłówka i 429.
 
 ## 14. Praca po stronie klienta wynikająca z tego specu
 
@@ -500,3 +538,20 @@ Nie jest częścią A, ale wynika z niego i powinna trafić do zaległości klie
   docelowo `/api/v1/worlds/:id/state`, `/api/v1/worlds/:id/settlements?bbox=`,
   `/api/v1/worlds/:id/fleets` z nagłówkiem `Authorization: Bearer`.
 - `serverTime` czytany ze `state`; opcjonalnie z nagłówka `X-Server-Time`.
+
+## 15. Pozycje przedprodukcyjne (niezrealizowane)
+
+Wykryte w recenzji, świadomie niezaadresowane w specu A. Żadna nie blokuje wdrożenia specu
+A, ale wszystkie mają wrócić przed produkcją:
+
+- Ruch z nieprawidłowym tokenem na trasy chronione nie dotyka `RateLimitGuard`, bo
+  `JwtAuthGuard` odrzuca żądanie wcześniej (kolejność strażników w `AppModule`). Naprawa
+  wymaga limitera działającego przed uwierzytelnianiem i należy do specu wprowadzającego
+  Redis (C).
+- Limit po adresie klienta (`RateLimitGuard`, klucz `ip:*`) wymaga włączenia zaufania do
+  proxy (`app.set('trust proxy', ...)`) przed wdrożeniem za odwrotnym proxy; bez tego staje
+  się limitem globalnym dla wszystkich użytkowników. Ostrzeżenie jest już w kodzie strażnika.
+- Rotacja tokenu odświeżającego (`AuthService.refresh`) nie jest objęta transakcją: nowa
+  para wraca do klienta przed unieważnieniem starej (`refreshTokens.revoke` woła się po
+  `issue`). Okno łaski 60 s to toleruje z założenia, ale pozycja należy do przeglądu
+  hardeningowego.

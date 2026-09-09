@@ -1,114 +1,96 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Islanders API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Backend gry Islanders (mobilne MMO RTS na archipelagu): NestJS 12, PostgreSQL (Drizzle),
+Redis (zarezerwowany od specu C). Kontrakt HTTP i decyzje projektowe:
+`docs/api-guidelines.md`, `docs/superpowers/specs/`, `docs/adr/`. Słownik domeny:
+`../islanders/CONTEXT.md`.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
-
-## Description
-
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
+## Start lokalny
 
 ```bash
-$ npm install
+npm install
+cp .env.example .env            # uzupełnij JWT_SECRET (min. 32 znaki)
+npm run compose:up              # Postgres 17 i Redis 7 w Dockerze
+npm run db:migrate
+npm run world:create -- --seed 1337 --width 200 --height 200 --wind 0.3,-0.1
+npm run start:dev
 ```
 
-## Compile and run the project
+Aplikacja słucha na `http://localhost:3000/api/v1`, dokumentacja Swagger (gdy
+`SWAGGER_ENABLED=true`, domyślnie poza `NODE_ENV=production`) pod
+`http://localhost:3000/api/docs`.
+
+Porty publikowane przez `docker-compose.yml` (domyślnie `5432` i `6379`) można nadpisać
+zmiennymi `POSTGRES_PORT` i `REDIS_PORT` w `.env`, gdy są lokalnie zajęte przez inny projekt.
+
+## Testy
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm test                        # jednostkowe (vitest run), bez bazy
+npm run test:e2e                # HTTP na Postgresie z Testcontainers — wymaga Dockera
+npm run test:cov                # jednostkowe z pokryciem
 ```
 
-## Run tests
+Wśród testów jednostkowych jest test zgodności geografii
+(`src/domain/geography/world-parity.spec.ts`): czyta plik
+`${ISLANDERS_CLIENT_DIR}/contract/world-parity.json` z repozytorium klienta Godot
+(`ISLANDERS_CLIENT_DIR`, domyślnie `../islanders` — patrz `.env.example`) i porównuje bit
+po bicie generację terenu serwera z tym, co wygenerował klient dla tych samych światów.
+Brak pliku jest błędem testu, nie pominięciem.
+
+**Nie regeneruj tego pliku z serwera, żeby test przeszedł.** Plik jest zapisem tego, co
+faktycznie liczy klient (Godot/GDScript); test istnieje po to, żeby wykryć rozjazd
+implementacji, a nie żeby zawsze był zielony. Rozbieżność oznacza realny rozjazd kontraktu
+klient–serwer i wymaga naprawy po stronie serwera (albo ustalenia z klientem, że kontrakt
+się zmienia) — nigdy nadpisania pliku danymi z tego repozytorium.
+
+## Migracje
+
+Schemat bazy jest w `src/infra/db/schema/` (Drizzle, plik na tabelę). Migracje SQL
+generowane z niego są commitowane w `drizzle/` i uruchamiane programowo, nie automatycznie
+przy starcie aplikacji.
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm run db:generate             # po zmianie schematu w src/infra/db/schema/*
+npm run db:migrate              # buduje projekt i uruchamia migrator na DATABASE_URL
 ```
 
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+## Inne komendy
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm run lint                    # oxlint src/ test/
+npm run build                   # nest build
+npm run world:create -- --seed <int> [--width <int>] [--height <int>] [--wind <x>,<y>]
+npm run compose:down            # zatrzymuje kontenery Postgresa i Redisa
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## Struktura
 
-## Observability
+```
+src/
+  domain/       czysty rdzeń domenowy — geografia, reguły, balans, ekonomia, zegar;
+                bez dekoratorów Nest, Drizzle ani Date.now(), testowany bez kontenera
+  infra/        config (zod), połączenie z bazą, warstwa HTTP (prefiks /api/v1,
+                walidacja, limiter zapytań, nagłówek czasu, filtr błędów), Swagger
+  modules/      health, auth, players, worlds, settlements, fleets
+  cli/          world:create
+drizzle/        migracje SQL, commitowane
+test/           testy e2e (Testcontainers + supertest)
+docker-compose.yml   Postgres 17 i Redis 7 do pracy lokalnej
+```
 
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
+## Odstępstwa od specyfikacji
 
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
+Implementacja w kilku miejscach świadomie odbiega od `docs/superpowers/specs/`. Pełna lista
+z uzasadnieniami jest w sekcji 4.2 tego dokumentu
+(`docs/superpowers/specs/2026-09-08-backend-foundation-geography-design.md`); w skrócie:
+własny limiter zapytań zamiast `@nestjs/throttler` (konflikt wersji z Nest 12), własny
+moduł konfiguracji zamiast `@nestjs/config`, health przez proste `SELECT 1` zamiast
+`@nestjs/terminus`, nagłówek `X-Server-Time` z middleware zamiast interceptora, odczyt
+kodu błędu Postgresa przez łańcuch `cause` (bo `drizzle-orm` opakowuje błąd sterownika),
+oraz nadpisywalne porty w `docker-compose.yml`.
 
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Znane pozycje przedprodukcyjne (niezrealizowane, patrz sekcja 15 tego samego dokumentu):
+limiter zapytań nie chroni tras z nieprawidłowym tokenem (odrzuca je wcześniej strażnik
+uwierzytelniania), limiter po adresie IP wymaga skonfigurowania zaufania do proxy przed
+wdrożeniem za odwrotnym proxy, a rotacja tokenu odświeżającego nie jest objęta transakcją.
