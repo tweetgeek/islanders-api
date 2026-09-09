@@ -136,6 +136,28 @@ Publikowane porty (`5432`, `6379` w tabeli wyżej) są nadpisywalne zmiennymi `P
 i `REDIS_PORT` z domyślnymi wartościami zgodnymi ze specem (odstępstwo, patrz 4.2 pkt 6) —
 na maszynach deweloperskich bywają zajęte przez inne projekty.
 
+**Swagger.** `setupSwagger(app)` w `infra/swagger/` rejestruje dokument pod `/api/docs`
+(UI) i `/api/docs-json`, z `addBearerAuth()` i tagami po modułach (`auth`, `worlds`,
+`settlements`, `fleets`, `health`). Włączany tylko gdy `SWAGGER_ENABLED=true`. Każdy
+kontroler dostaje `@ApiTags`, trasy chronione `@ApiBearerAuth()`, odpowiedzi błędów
+`@ApiResponse` dla kodów z sekcji 11. Swagger dokumentuje, nie definiuje kontraktu:
+kształt JSON-a nadal dyktuje klient, a testy e2e sprawdzają odpowiedzi, nie schemat.
+
+**Szkielet modułów.** Puste, zarejestrowane w `AppModule` moduły `HealthModule`,
+`AuthModule`, `PlayersModule`, `WorldsModule`, `SettlementsModule`, `FleetsModule`, każdy
+z kontrolerem bez tras poza `health`, oraz `DbModule` z providerem połączenia (bez tabel).
+Katalogi `src/domain/*` powstają puste z plikiem `index.ts`. Test e2e Etapu 0 startuje
+aplikację na Testcontainers i sprawdza `GET /api/v1/health` → 200 oraz obecność
+`/api/docs-json` przy włączonej fladze i 404 przy wyłączonej.
+
+Migracje są generowane z definicji schematu (`npm run db:generate`), commitowane
+w `drizzle/` i uruchamiane programowo migratorem Drizzle: `npm run db:migrate` lokalnie,
+a w e2e na świeżym kontenerze przed startem aplikacji. Aplikacja nie migruje sama przy
+starcie.
+
+Skrypty npm: `db:generate`, `db:migrate`, `world:create`, `compose:up` (`docker compose up -d`),
+`compose:down`, plus istniejące `build`, `start*`, `lint`, `test`, `test:e2e`.
+
 ### 4.2 Odstępstwa od specyfikacji
 
 Implementacja świadomie odeszła od tego, co mówi sekcja 4 i 10.4, w sześciu miejscach.
@@ -163,31 +185,9 @@ Powody techniczne, nie stylistyczne — poniższe zastępuje wyliczenie z linii 
    opakowuje każdy błąd sterownika w `DrizzleQueryError` i zostawia oryginalny
    `PostgresError` pod `cause`, więc odczyt z wierzchu zwracałby fałsz dla każdego błędu.
 6. Publikowane porty w `docker-compose.yml` są nadpisywalne przez `POSTGRES_PORT`
-   i `REDIS_PORT`, z domyślnymi wartościami zgodnymi z tabelą wyżej. Powód: na maszynach
-   deweloperskich te porty bywają zajęte przez inne projekty, a `compose:up` z flagą
-   oczekiwania pada wtedy na całości mimo zdrowej bazy.
-
-**Swagger.** `setupSwagger(app)` w `infra/swagger/` rejestruje dokument pod `/api/docs`
-(UI) i `/api/docs-json`, z `addBearerAuth()` i tagami po modułach (`auth`, `worlds`,
-`settlements`, `fleets`, `health`). Włączany tylko gdy `SWAGGER_ENABLED=true`. Każdy
-kontroler dostaje `@ApiTags`, trasy chronione `@ApiBearerAuth()`, odpowiedzi błędów
-`@ApiResponse` dla kodów z sekcji 11. Swagger dokumentuje, nie definiuje kontraktu:
-kształt JSON-a nadal dyktuje klient, a testy e2e sprawdzają odpowiedzi, nie schemat.
-
-**Szkielet modułów.** Puste, zarejestrowane w `AppModule` moduły `HealthModule`,
-`AuthModule`, `PlayersModule`, `WorldsModule`, `SettlementsModule`, `FleetsModule`, każdy
-z kontrolerem bez tras poza `health`, oraz `DbModule` z providerem połączenia (bez tabel).
-Katalogi `src/domain/*` powstają puste z plikiem `index.ts`. Test e2e Etapu 0 startuje
-aplikację na Testcontainers i sprawdza `GET /api/v1/health` → 200 oraz obecność
-`/api/docs-json` przy włączonej fladze i 404 przy wyłączonej.
-
-Migracje są generowane z definicji schematu (`npm run db:generate`), commitowane
-w `drizzle/` i uruchamiane programowo migratorem Drizzle: `npm run db:migrate` lokalnie,
-a w e2e na świeżym kontenerze przed startem aplikacji. Aplikacja nie migruje sama przy
-starcie.
-
-Skrypty npm: `db:generate`, `db:migrate`, `world:create`, `compose:up` (`docker compose up -d`),
-`compose:down`, plus istniejące `build`, `start*`, `lint`, `test`, `test:e2e`.
+   i `REDIS_PORT`, z domyślnymi wartościami zgodnymi z tabelą w sekcji 4.1. Powód: na
+   maszynach deweloperskich te porty bywają zajęte przez inne projekty, a `compose:up`
+   z flagą oczekiwania pada wtedy na całości mimo zdrowej bazy.
 
 ## 5. Geografia (`domain/geography`)
 
