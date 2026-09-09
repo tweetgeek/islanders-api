@@ -1,21 +1,14 @@
-import { Module } from '@nestjs/common';
-import { createObserveModule } from '@nestjs/observe';
-import { AppController } from './app.controller.js';
-import { AppService } from './app.service.js';
+import { DynamicModule, Module } from '@nestjs/common';
+import { AppConfigModule } from './infra/config/config.module.js';
+import type { Env } from './infra/config/env.js';
 
-export const { ObserveModule, ObserveInstrument } = createObserveModule();
-
-@Module({
-  imports: [
-    // Distributed tracing, auto-correlated logs, request/job metrics, error
-    // telemetry, alarms, and more — out of the box. Sign up at https://observe.nestjs.com
-    ObserveModule.forRoot({
-      appKey: 'YOUR_APP_KEY',
-      appSecret: 'YOUR_APP_SECRET',
-      serviceId: 'islanders',
-    }),
-  ],
-  controllers: [AppController],
-  providers: [AppService],
-})
-export class AppModule {}
+@Module({})
+export class AppModule {
+  /** Składa aplikację z gotowej, zwalidowanej konfiguracji — brak zmiennej to błąd przed startem. */
+  static forRoot(env: Env): DynamicModule {
+    return {
+      module: AppModule,
+      imports: [AppConfigModule.forRoot(env)],
+    };
+  }
+}
