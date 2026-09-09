@@ -19,13 +19,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const res = ctx.getResponse<Response>();
     const req = ctx.getRequest<Request>();
 
-    // Wyjątek po wysłaniu nagłówków: `res.status()` rzuciłoby wewnątrz filtra i obsługę
-    // przejąłby domyślny mechanizm Node'a. Odpowiedź już poszła — nie ma czego naprawiać.
-    if (res.headersSent) {
-      return;
-    }
-
     if (exception instanceof HttpException) {
+      // Zamierzona część kontraktu, nie awaria — nie logujemy. Po wysłanych nagłówkach
+      // zostaje tylko pominąć zapis: `res.status()` rzuciłby wtedy wewnątrz filtra.
+      if (res.headersSent) return;
       const body = exception.getResponse();
       res
         .status(exception.getStatus())
@@ -37,11 +34,17 @@ export class AllExceptionsFilter implements ExceptionFilter {
       return;
     }
 
+    // Log BEZWARUNKOWO, także po wysłanych nagłówkach. Wtedy jest tym bardziej potrzebny:
+    // do klienta i tak nic już nie dopiszemy, więc log jest jedynym śladem awarii.
     const errorId = randomUUID();
     this.logger.error(
       `[${errorId}] ${req.method} ${req.url}`,
       exception instanceof Error ? exception.stack : String(exception),
     );
+
+    // Strzeżemy wyłącznie zapisu do odpowiedzi — `res.status()` po wysłanych nagłówkach
+    // rzuciłby wewnątrz filtra i obsługę przejąłby domyślny mechanizm Node'a.
+    if (res.headersSent) return;
     res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
       statusCode: 500,
       error: 'Internal Server Error',

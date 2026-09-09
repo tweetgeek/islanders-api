@@ -89,12 +89,29 @@ describe('AllExceptionsFilter', () => {
     expect(logged[0][1]).toContain(secret);
   });
 
-  it('nagłówki już wysłane: filtr nie dotyka odpowiedzi', () => {
+  it('nagłówki już wysłane: filtr nie dotyka odpowiedzi, ale awarię i tak loguje', () => {
     const { host, res } = makeHost(true);
     new AllExceptionsFilter().catch(new Error('za późno'), host);
 
     expect(res.calls).toBe(0);
     expect(res.status).toBeUndefined();
     expect(res.body).toBeUndefined();
+
+    // Do klienta nic już nie dopiszemy, więc log jest JEDYNYM śladem tej awarii.
+    // Gdyby straż nagłówków obejmowała też logowanie, wyjątek znikałby po cichu.
+    expect(logged).toHaveLength(1);
+    expect(logged[0][0]).toMatch(
+      /^\[[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\] GET \/api\/v1\/cokolwiek$/,
+    );
+    expect(logged[0][1]).toContain('za późno');
+  });
+
+  it('nagłówki już wysłane, wyjątek HTTP: bez zapisu do odpowiedzi i bez logu', () => {
+    const { host, res } = makeHost(true);
+    new AllExceptionsFilter().catch(new ForbiddenException('Za późno'), host);
+
+    expect(res.calls).toBe(0);
+    expect(res.body).toBeUndefined();
+    expect(logged).toEqual([]);
   });
 });
