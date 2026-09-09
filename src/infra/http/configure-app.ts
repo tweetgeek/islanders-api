@@ -1,5 +1,6 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import type { Env } from '../config/env.js';
+import { setupSwagger } from '../swagger/setup-swagger.js';
 
 /**
  * Jedno miejsce konfiguracji aplikacji HTTP, wspólne dla main.ts i testów e2e,
@@ -16,5 +17,7 @@ export function configureApp(app: INestApplication, env: Env): void {
     }),
   );
   app.enableShutdownHooks();
-  void env; // Swagger (Task 3) i interceptory (Task 15) użyją env
+  if (env.SWAGGER_ENABLED) {
+    setupSwagger(app);
+  }
 }
