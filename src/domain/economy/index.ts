@@ -1,1 +1,1 @@
-export {};
+export * from './current-resources.js';

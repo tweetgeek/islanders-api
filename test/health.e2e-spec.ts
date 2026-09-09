@@ -19,7 +19,7 @@ describe('health i swagger (e2e)', () => {
   });
 
   it('Swagger JSON dostępny przy SWAGGER_ENABLED=true', async () => {
-    app = await createTestApp({ SWAGGER_ENABLED: 'true' });
+    app = await createTestApp({ env: { SWAGGER_ENABLED: 'true' } });
     const res = await request(app.getHttpServer())
       .get('/api/docs-json')
       .expect(200);
@@ -28,7 +28,7 @@ describe('health i swagger (e2e)', () => {
   });
 
   it('Swagger wyłączony przy SWAGGER_ENABLED=false', async () => {
-    app = await createTestApp({ SWAGGER_ENABLED: 'false' });
+    app = await createTestApp({ env: { SWAGGER_ENABLED: 'false' } });
     await request(app.getHttpServer()).get('/api/docs-json').expect(404);
   });
 });
