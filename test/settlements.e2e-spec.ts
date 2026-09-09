@@ -1,8 +1,11 @@
 import { INestApplication } from '@nestjs/common';
+import { and, eq } from 'drizzle-orm';
 import request from 'supertest';
 import { startingBuildings } from '../src/domain/balance/index.js';
 import { islandAt } from '../src/domain/geography/index.js';
 import { FixedClock } from '../src/domain/time/index.js';
+import { DB, type Db } from '../src/infra/db/db.module.js';
+import { buildings } from '../src/infra/db/schema/index.js';
 import {
   bearer,
   createWorld,
@@ -98,24 +101,81 @@ describe('settlements (e2e) — reguły informacyjne', () => {
     expect(foreignInMineBox.ownerId).toBe(other.playerId);
     expect(foreignInMineBox.ownerId).not.toBe(own.ownerId);
     expect('buildings' in foreignInMineBox).toBe(false);
-    expect(own.buildings).toEqual(
-      startingBuildings(islandAt(1337, mine.x, mine.y)!.biome),
+  });
+
+  it('w jednym prostokącie budynki trafiają do właściwej osady, a nie do sąsiada', async () => {
+    const world = await createWorld(app);
+    const me = await registerPlayer(app);
+    const other = await registerPlayer(app);
+    const mine = await joinWorld(app, me.accessToken, world.id, 'Moja');
+    const theirs = await joinWorld(app, other.accessToken, world.id, 'Cudza');
+
+    // Obie osady startują identycznie, więc pomylone przypisanie poziomów byłoby
+    // niewidoczne. Różnicujemy je w bazie: u mnie BARRACKS 5, u sąsiada TOWN_HALL 7.
+    const db = app.get<Db>(DB);
+    const levelAt = (
+      c: { x: number; y: number },
+      type: 'BARRACKS' | 'TOWN_HALL',
+      level: number,
+    ) =>
+      db
+        .update(buildings)
+        .set({ level })
+        .where(
+          and(
+            eq(buildings.worldId, world.id),
+            eq(buildings.x, c.x),
+            eq(buildings.y, c.y),
+            eq(buildings.type, type),
+          ),
+        );
+    await levelAt(mine, 'BARRACKS', 5);
+    await levelAt(theirs, 'TOWN_HALL', 7);
+
+    const bbox = `${Math.max(0, Math.min(mine.x, theirs.x) - 3)},${Math.max(0, Math.min(mine.y, theirs.y) - 3)},${Math.min(199, Math.max(mine.x, theirs.x) + 3)},${Math.min(199, Math.max(mine.y, theirs.y) + 3)}`;
+    const res = await http()
+      .get(`/api/v1/worlds/${world.id}/settlements`)
+      .query({ bbox })
+      .set('Authorization', bearer(me.accessToken))
+      .expect(200);
+    const own = res.body.find(
+      (s: { x: number; y: number }) => s.x === mine.x && s.y === mine.y,
     );
+    const foreign = res.body.find(
+      (s: { x: number; y: number }) => s.x === theirs.x && s.y === theirs.y,
+    );
+    // Obie osady różnych właścicieli naprawdę są w tym prostokącie.
+    expect(foreign).toBeDefined();
+    expect(foreign.ownerId).toBe(other.playerId);
+    expect(own.ownerId).toBe(me.playerId);
+    // Mój podniesiony poziom jest odczytany, a poziom sąsiada się nie przelał:
+    // TOWN_HALL musi zostać na 1, mimo że u sąsiada w tym samym prostokącie jest 7.
+    expect(own.buildings).toEqual({
+      ...startingBuildings(islandAt(1337, mine.x, mine.y)!.biome),
+      BARRACKS: 5,
+    });
+    expect(own.buildings.TOWN_HALL).toBe(1);
+    expect(own.populationMax).toBe(100);
   });
 
   it('zasoby rosną leniwie bez zapisu: po godzinie odczyt pokazuje produkcję, lastSyncAt = now', async () => {
     const world = await createWorld(app);
     const me = await registerPlayer(app);
     await joinWorld(app, me.accessToken, world.id);
+    // Cofnięcie zegara w finally: gdyby asercja padła, przesunięcie wyciekłoby
+    // do kolejnych testów w tym pliku (rozbudują go zadania 15 i 16).
     clock.advance(3600_000);
-    const res = await http()
-      .get(`/api/v1/worlds/${world.id}/settlements`)
-      .set('Authorization', bearer(me.accessToken))
-      .expect(200);
-    const s = res.body[0];
-    expect(s.resources.food).toBe(1000 + s.productionPerHour.food);
-    expect(s.lastSyncAt).toBe(clock.now().toISOString());
-    clock.advance(-3600_000);
+    try {
+      const res = await http()
+        .get(`/api/v1/worlds/${world.id}/settlements`)
+        .set('Authorization', bearer(me.accessToken))
+        .expect(200);
+      const s = res.body[0];
+      expect(s.resources.food).toBe(1000 + s.productionPerHour.food);
+      expect(s.lastSyncAt).toBe(clock.now().toISOString());
+    } finally {
+      clock.advance(-3600_000);
+    }
   });
 
   it('bbox > 4096 komórek albo poza mapą -> 400; bez profilu -> 403', async () => {

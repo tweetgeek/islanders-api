@@ -55,4 +55,34 @@ describe('pickHomeIsland', () => {
     }
     expect(pickHomeIsland(small, () => true, first)).toBeNull();
   });
+
+  it('nie wybiera wyspy wulkanicznej, nawet gdy jest jedyną wolną komórką', () => {
+    // Zajmujemy wszystko poza wulkanami, więc picker MUSI ocenić komórki wulkaniczne.
+    // Bez strażnika po biomie oddałby wulkan; z nim nie ma żadnej kandydatki.
+    const volcanicOnly = (x: number, y: number) => {
+      const island = islandAt(world.seed, x, y);
+      return !(island && island.biome === 'VOLCANIC');
+    };
+    let volcanic = 0;
+    for (let x = 0; x < world.width; x++) {
+      for (let y = 0; y < world.height; y++) {
+        const island = islandAt(world.seed, x, y);
+        if (island && island.biome === 'VOLCANIC') volcanic++;
+      }
+    }
+    expect(volcanic).toBeGreaterThan(0); // test nie jest pusty: wulkany na tej mapie są
+    expect(pickHomeIsland(world, volcanicOnly, first)).toBeNull();
+  });
+
+  it('nie ocenia komórek spoza mapy, choć geografia zwraca tam prawdziwy ląd', () => {
+    // Wąski i wysoki świat: pierścienie wokół środka szybko wychodzą poza mapę
+    // (ujemne x oraz y >= height). Strażnik granic jest nośny, nie obronny —
+    // islandAt poza mapą oddaje normalną wyspę, więc bez niego picker zwróciłby
+    // współrzędne, pod którymi nie da się założyć osady.
+    const strip = { seed: 1337, width: 3, height: 200 };
+    expect(islandAt(strip.seed, -5, -5)).not.toBeNull();
+    const insideTaken = (x: number, y: number) =>
+      x >= 0 && y >= 0 && x < strip.width && y < strip.height;
+    expect(pickHomeIsland(strip, insideTaken, first)).toBeNull();
+  });
 });
