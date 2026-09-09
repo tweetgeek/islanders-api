@@ -38,7 +38,8 @@ Claude-Session: https://claude.ai/code/session_01M8dt762nmkn45UizBL11GP
 | `@nestjs/throttler` | własny `RateLimitGuard` (Task 16), limity z `RATE_LIMIT_*_PER_MINUTE` | `@nestjs/throttler@6.5.0` ma peer deps `@nestjs/common ^7–^11`; `npm install` na Nest 12 kończy się `ERESOLVE` |
 | `@nestjs/config` z zod | własny `AppConfigModule` z tokenem `ENV` (Task 1) | pełne typowanie bez `ConfigService.get`, mniej zależności, ten sam efekt |
 | `@nestjs/terminus` | `HealthController` z `SELECT 1` (Task 3, 4) |
-| nagłówek `X-Server-Time` z interceptora | middleware Express + interceptor tylko na pole `serverTime` (Task 16) | jeden wskaźnik nie uzasadnia biblioteki |
+| nagłówek `X-Server-Time` z interceptora | middleware Express + interceptor tylko na pole `serverTime` (Task 16) |
+| `pg-errors.ts` czyta `err.code` z wierzchu | `asPgError` przechodzi łańcuch `cause` (Task 4, runda 1) | `drizzle-orm` 0.45.2 zawsze opakowuje błąd sterownika w `DrizzleQueryError` i zostawia `PostgresError` pod `cause`; odczyt z wierzchu zwracałby `false` dla każdego błędu | jeden wskaźnik nie uzasadnia biblioteki |
 
 Po wykonaniu planu należy nanieść te zmiany do specu (Task 17).
 
