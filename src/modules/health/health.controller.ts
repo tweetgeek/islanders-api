@@ -8,8 +8,10 @@ import {
 import { ApiTags } from '@nestjs/swagger';
 import { sql } from 'drizzle-orm';
 import { DB, type Db } from '../../infra/db/db.module.js';
+import { Public } from '../auth/public.decorator.js';
 
 @ApiTags('health')
+@Public()
 @Controller('health')
 export class HealthController {
   private readonly logger = new Logger(HealthController.name);
