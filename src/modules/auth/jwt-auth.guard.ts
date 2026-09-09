@@ -28,18 +28,24 @@ export class JwtAuthGuard implements CanActivate {
     if (isPublic) return true;
 
     const req = context.switchToHttp().getRequest<AuthenticatedRequest>();
-    const header = req.headers.authorization;
-    if (!header?.startsWith('Bearer ')) {
+    // RFC 7235: schemat uwierzytelnienia jest nieczuły na wielkość znaków.
+    const token = /^bearer +(.+)$/i.exec(req.headers.authorization ?? '')?.[1];
+    if (!token) {
       throw new UnauthorizedException('Brak tokenu');
     }
+    let payload: { sub?: string };
     try {
-      const payload = await this.jwt.verifyAsync<{ sub: string }>(
-        header.slice('Bearer '.length),
-      );
-      req.playerId = Number(payload.sub);
+      payload = await this.jwt.verifyAsync<{ sub?: string }>(token);
     } catch {
       throw new UnauthorizedException('Token nieważny lub wygasły');
     }
+    // Bez tego token bez `sub` dałby `Number(undefined)`, czyli NaN, i przeszedłby dalej
+    // jako identyfikator gracza. Identyfikatory to dodatnie liczby całkowite (serial).
+    const playerId = Number(payload.sub);
+    if (!Number.isSafeInteger(playerId) || playerId <= 0) {
+      throw new UnauthorizedException('Token nieważny lub wygasły');
+    }
+    req.playerId = playerId;
     return true;
   }
 }

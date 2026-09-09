@@ -141,12 +141,17 @@ describe('auth (e2e)', () => {
 
   it('refresh po wygaśnięciu -> 401', async () => {
     const p = await registerPlayer(app);
+    // Cofnięcie zegara w finally: gdyby asercja padła, kolejne testy w pliku
+    // posypałyby się z niepowiązanego powodu, bo zegar zostałby 31 dni w przód.
     clock.advance(31 * 24 * 3600_000);
-    await http()
-      .post('/api/v1/auth/refresh')
-      .send({ refreshToken: p.refreshToken })
-      .expect(401);
-    clock.advance(-31 * 24 * 3600_000);
+    try {
+      await http()
+        .post('/api/v1/auth/refresh')
+        .send({ refreshToken: p.refreshToken })
+        .expect(401);
+    } finally {
+      clock.advance(-31 * 24 * 3600_000);
+    }
   });
 
   it('logout unieważnia natychmiast, bez okna łaski; powtórny logout to nadal 204', async () => {
@@ -167,5 +172,63 @@ describe('auth (e2e)', () => {
       .post('/api/v1/auth/logout')
       .send({ refreshToken: 'nie-istnieje' })
       .expect(204);
+  });
+
+  it('logout starym tokenem w oknie łaski unieważnia go natychmiast', async () => {
+    const p = await registerPlayer(app);
+    // Klient odświeżył, ale odpowiedź z nową parą zginęła — nadal trzyma stary token.
+    await http()
+      .post('/api/v1/auth/refresh')
+      .send({ refreshToken: p.refreshToken })
+      .expect(200);
+    clock.advance(10_000);
+    await http()
+      .post('/api/v1/auth/logout')
+      .send({ refreshToken: p.refreshToken })
+      .expect(204);
+    // Wylogowanie omija okno łaski, więc stary token nie wybije już świeżej pary.
+    await http()
+      .post('/api/v1/auth/refresh')
+      .send({ refreshToken: p.refreshToken })
+      .expect(401);
+  });
+
+  it('odpowiedzi auth mają dokładnie ustalone pola — nic więcej nie wycieka', async () => {
+    const suffix = uniqueSuffix();
+    const body = {
+      email: `k-${suffix}@t.pl`,
+      nickname: `k_${suffix}`,
+      password: 'haslo-testowe-123',
+    };
+    const registered = await http()
+      .post('/api/v1/auth/register')
+      .send(body)
+      .expect(201);
+    expect(Object.keys(registered.body).sort()).toEqual([
+      'accessToken',
+      'nickname',
+      'playerId',
+      'refreshToken',
+    ]);
+
+    const logged = await http()
+      .post('/api/v1/auth/login')
+      .send({ email: body.email, password: body.password })
+      .expect(200);
+    expect(Object.keys(logged.body).sort()).toEqual([
+      'accessToken',
+      'nickname',
+      'playerId',
+      'refreshToken',
+    ]);
+
+    const refreshed = await http()
+      .post('/api/v1/auth/refresh')
+      .send({ refreshToken: registered.body.refreshToken })
+      .expect(200);
+    expect(Object.keys(refreshed.body).sort()).toEqual([
+      'accessToken',
+      'refreshToken',
+    ]);
   });
 });
