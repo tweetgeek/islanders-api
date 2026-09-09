@@ -26,8 +26,8 @@ export interface Island {
   deposit: Deposit;
 }
 
-/** Zasoby produkowane przez biom — lokalna kopia kontraktu (ADR 0002), sprawdzana testem z domain/rules. */
-const BIOME_RESOURCES: Record<Biome, readonly ResourceName[]> = {
+/** Zasoby produkowane przez biom — lokalna kopia kontraktu (ADR 0002), sprawdzana testem w src/domain/rules/rules.spec.ts. */
+export const BIOME_RESOURCES: Record<Biome, readonly ResourceName[]> = {
   TROPICAL: ['wood', 'food'],
   TEMPERATE: ['stone', 'food'],
   VOLCANIC: ['iron', 'sulfur'],

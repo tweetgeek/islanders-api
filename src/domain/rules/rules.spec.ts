@@ -1,4 +1,5 @@
 import { RESOURCE_ORDER } from '../geography/constants.js';
+import { BIOME_RESOURCES } from '../geography/island.js';
 import {
   BIOMES,
   BUILDINGS,
@@ -60,5 +61,13 @@ describe('reguły domenowe (CONTEXT.md, ADR 0002)', () => {
       iron: 0,
       sulfur: 0,
     });
+  });
+
+  it('geografia i reguły opisują ten sam podział zasobów między biomy', () => {
+    for (const b of BIOMES) {
+      expect([...biomeResources(b)].sort()).toEqual(
+        [...BIOME_RESOURCES[b]].sort(),
+      );
+    }
   });
 });
