@@ -6,6 +6,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import { RateLimit } from '../../infra/http/rate-limit.guard.js';
 import {
   AuthResultDto,
   ConflictFieldDto,
@@ -24,6 +25,7 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Post('register')
+  @RateLimit('ip')
   @HttpCode(201)
   @ApiCreatedResponse({ type: AuthResultDto })
   @ApiConflictResponse({ type: ConflictFieldDto })
@@ -32,6 +34,7 @@ export class AuthController {
   }
 
   @Post('login')
+  @RateLimit('ip')
   @HttpCode(200)
   @ApiOkResponse({ type: AuthResultDto })
   @ApiUnauthorizedResponse()
@@ -40,6 +43,7 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @RateLimit('ip')
   @HttpCode(200)
   @ApiOkResponse({ type: TokenPairDto })
   @ApiUnauthorizedResponse()

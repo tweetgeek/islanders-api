@@ -2,6 +2,7 @@ import { DynamicModule, Module } from '@nestjs/common';
 import { AppConfigModule } from './infra/config/config.module.js';
 import type { Env } from './infra/config/env.js';
 import { DbModule } from './infra/db/db.module.js';
+import { HttpModule } from './infra/http/http.module.js';
 import { TimeModule } from './infra/time/time.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
@@ -26,6 +27,9 @@ export class AppModule {
         WorldsModule,
         SettlementsModule,
         FleetsModule,
+        // Na końcu: globalne strażniki działają w kolejności rejestracji, więc RateLimitGuard
+        // musi wystartować po JwtAuthGuard, żeby widzieć ustawione przez niego `req.playerId`.
+        HttpModule,
       ],
     };
   }

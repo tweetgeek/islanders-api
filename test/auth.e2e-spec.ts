@@ -209,6 +209,7 @@ describe('auth (e2e)', () => {
       'nickname',
       'playerId',
       'refreshToken',
+      'serverTime',
     ]);
 
     const logged = await http()
@@ -220,6 +221,7 @@ describe('auth (e2e)', () => {
       'nickname',
       'playerId',
       'refreshToken',
+      'serverTime',
     ]);
 
     const refreshed = await http()
@@ -229,6 +231,7 @@ describe('auth (e2e)', () => {
     expect(Object.keys(refreshed.body).sort()).toEqual([
       'accessToken',
       'refreshToken',
+      'serverTime',
     ]);
   });
 });
