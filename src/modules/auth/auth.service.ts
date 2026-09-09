@@ -31,6 +31,23 @@ export interface AuthResult {
 
 const BAD_CREDENTIALS = 'Błędny e-mail lub hasło';
 
+/** Te same parametry przy rejestracji i przy atrapie — inaczej czasy się rozjadą. */
+const ARGON2_OPTIONS = { type: argon2.argon2id } as const;
+
+let dummyHash: Promise<string> | undefined;
+
+/**
+ * Atrapa skrótu dla logowania na nieistniejące konto. Bez niej odpowiedź wraca od razu,
+ * a dla istniejącego konta dopiero po weryfikacji argon2 — i sam czas odpowiedzi zdradza
+ * to, co identyczny komunikat miał ukryć. Weryfikujemy więc hasło wobec tej atrapy i
+ * wynik wyrzucamy. NIE USUWAĆ: to nie jest martwy kod, tylko wyrównanie czasu odpowiedzi.
+ * Liczona leniwie i tylko raz — argon2 jest kosztowny z założenia.
+ */
+function dummyPasswordHash(): Promise<string> {
+  dummyHash ??= argon2.hash('atrapa-hasla-do-wyrownania-czasu', ARGON2_OPTIONS);
+  return dummyHash;
+}
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -46,9 +63,7 @@ export class AuthService {
     nickname: string;
     password: string;
   }): Promise<AuthResult> {
-    const passwordHash = await argon2.hash(input.password, {
-      type: argon2.argon2id,
-    });
+    const passwordHash = await argon2.hash(input.password, ARGON2_OPTIONS);
     let player: PlayerRow;
     try {
       player = await this.players.create({
@@ -80,10 +95,13 @@ export class AuthService {
   async login(input: { email: string; password: string }): Promise<AuthResult> {
     const player = await this.players.findByEmail(input.email);
     // Jedna treść błędu dla obu przypadków, żeby nie zdradzać, czy konto istnieje.
-    if (
-      !player ||
-      !(await argon2.verify(player.passwordHash, input.password))
-    ) {
+    if (!player) {
+      // Weryfikacja atrapy przed rzuceniem wyjątku, żeby czas odpowiedzi był ten sam
+      // co przy złym haśle do istniejącego konta. Wynik celowo ignorujemy.
+      await argon2.verify(await dummyPasswordHash(), input.password);
+      throw new UnauthorizedException(BAD_CREDENTIALS);
+    }
+    if (!(await argon2.verify(player.passwordHash, input.password))) {
       throw new UnauthorizedException(BAD_CREDENTIALS);
     }
     const { refreshTokenId: _issued, ...result } = await this.issue(player);
