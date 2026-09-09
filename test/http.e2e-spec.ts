@@ -68,11 +68,16 @@ describe('warstwa HTTP (e2e)', () => {
       .expect(429);
     expect(limited.body.message).toMatch(/Za dużo żądań/);
     clock.advance(60_001);
-    await http()
-      .post('/api/v1/auth/login')
-      .send({ email: p.email, password: p.password })
-      .expect(200);
-    clock.advance(-60_001);
+    try {
+      await http()
+        .post('/api/v1/auth/login')
+        .send({ email: p.email, password: p.password })
+        .expect(200);
+    } finally {
+      // Bez `finally` porażka powyżej zostawiłaby przesunięty zegar i zamieniła jedną
+      // porażkę w kaskadę mylących porażek w kolejnych testach tego pliku.
+      clock.advance(-60_001);
+    }
   });
 
   it('koperta błędów Nest dla 400 i 409', async () => {

@@ -19,6 +19,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const res = ctx.getResponse<Response>();
     const req = ctx.getRequest<Request>();
 
+    // Wyjątek po wysłaniu nagłówków: `res.status()` rzuciłoby wewnątrz filtra i obsługę
+    // przejąłby domyślny mechanizm Node'a. Odpowiedź już poszła — nie ma czego naprawiać.
+    if (res.headersSent) {
+      return;
+    }
+
     if (exception instanceof HttpException) {
       const body = exception.getResponse();
       res

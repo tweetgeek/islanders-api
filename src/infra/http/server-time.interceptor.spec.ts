@@ -26,6 +26,20 @@ describe('ServerTimeInterceptor', () => {
       expect(await run(body)).toEqual(body);
     }
   });
+
+  // Pole dokładamy tylko do zwykłych obiektów. Instancja klasy straciłaby przy rozłożeniu
+  // swój prototyp, a obiekt bez prototypu — swój brak prototypu; oba wracają tą samą referencją.
+  it('instancja klasy i obiekt bez prototypu zostają nietknięte', async () => {
+    class Osada {
+      constructor(readonly id: string) {}
+    }
+    const instance = new Osada('1');
+    expect(await run(instance)).toBe(instance);
+
+    const bezPrototypu = Object.create(null) as Record<string, unknown>;
+    bezPrototypu.id = '1';
+    expect(await run(bezPrototypu)).toBe(bezPrototypu);
+  });
 });
 
 describe('serverTimeMiddleware', () => {

@@ -26,8 +26,11 @@ function context(
 }
 
 describe('RateLimitGuard', () => {
-  const clock = new FixedClock(new Date('2026-09-08T12:00:00.000Z'));
-  const guard = () => new RateLimitGuard(new Reflector(), clock, env);
+  // Każdy test dostaje własny zegar — przesunięcie okna w jednym teście nie może
+  // przeciekać do następnych, także wtedy, gdy asercja padnie w połowie.
+  const freshClock = () => new FixedClock(new Date('2026-09-08T12:00:00.000Z'));
+  const guard = (clock: FixedClock = freshClock()) =>
+    new RateLimitGuard(new Reflector(), clock, env);
 
   it('trasa publiczna bez metadanych: bez limitu', () => {
     const g = guard();
@@ -37,7 +40,8 @@ describe('RateLimitGuard', () => {
   });
 
   it('trasa z playerId: domyślnie 120/min na gracza, 121. żądanie -> 429, po oknie znów wolno', () => {
-    const g = guard();
+    const clock = freshClock();
+    const g = guard(clock);
     const handler = function state() {};
     for (let i = 0; i < 120; i++)
       expect(
