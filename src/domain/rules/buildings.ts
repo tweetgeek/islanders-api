@@ -19,7 +19,6 @@ export const BUILDINGS = [
   ...EXTRACTION_BUILDINGS,
 ] as const;
 
-export type CommonBuilding = (typeof COMMON_BUILDINGS)[number];
 export type ExtractionBuilding = (typeof EXTRACTION_BUILDINGS)[number];
 export type Building = (typeof BUILDINGS)[number];
 /** Poziomy budynków osady; brak klucza = poziom 0. */
