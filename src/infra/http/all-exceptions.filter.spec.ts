@@ -33,16 +33,34 @@ function makeHost(headersSent = false): { host: ArgumentsHost; res: Recorded } {
   };
 }
 
+/**
+ * Kształt `DrizzleQueryError` z drizzle-orm 0.45 (`node_modules/drizzle-orm/errors.cjs`):
+ * parametry zapytania wklejone do komunikatu, oryginalny błąd sterownika pod `cause`.
+ * Odtwarzamy go tutaj zamiast importować, bo test ma dowodzić rozpoznania po KSZTAŁCIE.
+ */
+class FakeDrizzleQueryError extends Error {
+  constructor(
+    readonly query: string,
+    readonly params: unknown[],
+    cause: unknown,
+  ) {
+    super(`Failed query: ${query}\nparams: ${params}`);
+    this.name = 'DrizzleQueryError';
+    this.cause = cause;
+  }
+}
+
 describe('AllExceptionsFilter', () => {
-  let logged: [string, string | undefined][];
+  // Wszystkie argumenty loggera, nie tylko dwa pierwsze: test wycieku musi widzieć każdy.
+  let logged: unknown[][];
   let spy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     logged = [];
     spy = vi
       .spyOn(Logger.prototype, 'error')
-      .mockImplementation((message: unknown, stack?: unknown) => {
-        logged.push([String(message), stack as string | undefined]);
+      .mockImplementation((...args: unknown[]) => {
+        logged.push(args);
       });
   });
   afterEach(() => {
@@ -87,6 +105,48 @@ describe('AllExceptionsFilter', () => {
     expect(logged[0][0]).toContain(String(body.errorId));
     expect(logged[0][0]).toContain('GET /api/v1/cokolwiek');
     expect(logged[0][1]).toContain(secret);
+  });
+
+  it('błąd zapytania Drizzle: parametry nie trafiają do logu, zapytanie i kod tak', () => {
+    const { host, res } = makeHost();
+    // Dokładnie ten parametr, który zapisuje `PlayersRepository.create`.
+    const passwordHash =
+      '$argon2id$v=19$m=65536,t=3,p=4$c29sZHNvbHQ$2SkRet9EYEbjBqoJoRWnRHTajnSMBQzZ0LzE9nRTaGM';
+    const query =
+      'insert into "players" ("email", "nickname", "password_hash") values ($1, $2, $3) returning "id", "nickname"';
+    const exception = new FakeDrizzleQueryError(
+      query,
+      ['gracz@example.com', 'koralowy_kapitan', passwordHash],
+      Object.assign(new Error('connection terminated'), { code: '08006' }),
+    );
+
+    new AllExceptionsFilter().catch(exception, host);
+
+    // Kontrakt odpowiedzi bez zmian: 500 z identyfikatorem, nic z wyjątku dla klienta.
+    expect(res.status).toBe(500);
+    const body = res.body as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual([
+      'error',
+      'errorId',
+      'message',
+      'statusCode',
+    ]);
+    expect(JSON.stringify(body)).not.toContain('argon2');
+
+    expect(logged).toHaveLength(1);
+    const wszystko = logged[0].map(String).join('\n');
+    // SEDNO: skrót hasła nie może pojawić się w ŻADNYM argumencie loggera. Trafiłby tam
+    // przez `exception.stack`, bo drizzle wkleja parametry do komunikatu błędu.
+    expect(wszystko).not.toContain(passwordHash);
+    expect(wszystko).not.toContain('argon2');
+    expect(wszystko).not.toContain('gracz@example.com');
+    expect(wszystko).not.toContain('params:');
+    // ...ale diagnostyka ma zostać: identyfikator, trasa, zapytanie, kod SQLSTATE.
+    expect(wszystko).toContain(String(body.errorId));
+    expect(wszystko).toContain('GET /api/v1/cokolwiek');
+    expect(wszystko).toContain(query);
+    expect(wszystko).toContain('08006');
+    expect(wszystko).toContain('DrizzleQueryError');
   });
 
   it('nagłówki już wysłane: filtr nie dotyka odpowiedzi, ale awarię i tak loguje', () => {

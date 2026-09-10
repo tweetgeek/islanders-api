@@ -18,6 +18,15 @@ function asPgError(err: unknown): PgError | null {
   return null;
 }
 
+/**
+ * Kod SQLSTATE wyłuskany z łańcucha przyczyn albo `null`, gdy błąd nie pochodzi ze sterownika.
+ * Sam kod jest bezpieczny do zalogowania — w przeciwieństwie do komunikatu `DrizzleQueryError`,
+ * który niesie w sobie parametry zapytania.
+ */
+export function pgErrorCode(err: unknown): string | null {
+  return asPgError(err)?.code ?? null;
+}
+
 /** 23505 = naruszenie unikalności; opcjonalnie tylko dla konkretnego ograniczenia. */
 export function isUniqueViolation(err: unknown, constraint?: string): boolean {
   const e = asPgError(err);

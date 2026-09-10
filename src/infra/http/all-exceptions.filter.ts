@@ -8,6 +8,39 @@ import {
   Logger,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { pgErrorCode } from '../db/pg-errors.js';
+
+/**
+ * Szczegóły awarii do logu, z jednym wyjątkiem od reguły „loguj stos".
+ *
+ * `drizzle-orm` 0.45 buduje komunikat `DrizzleQueryError` jako `Failed query: <sql>\nparams: <p>`,
+ * a komunikat jest częścią stosu. Parametry zapisu to u nas skrót argon2 hasła
+ * (`PlayersRepository.create`) albo skrót tokenu odświeżającego (`RefreshTokensRepository.create`),
+ * czyli artefakty równoważne poświadczeniu. Log trafia do systemu o innym modelu dostępu niż baza,
+ * więc dla takiego błędu logujemy nazwę, treść zapytania i kod SQLSTATE, a NIGDY `params` ani stosu.
+ *
+ * Rozpoznajemy błąd po kształcie (`query: string` + `params: unknown[]`), a nie przez `instanceof`:
+ * warstwa HTTP nie musi wtedy importować klasy z `drizzle-orm`, a osłona działa też dla błędów
+ * opakowanych przez inne wersje sterownika.
+ */
+function detailsFor(exception: unknown): string {
+  if (typeof exception === 'object' && exception !== null) {
+    const e = exception as {
+      name?: unknown;
+      query?: unknown;
+      params?: unknown;
+      cause?: unknown;
+    };
+    if (typeof e.query === 'string' && Array.isArray(e.params)) {
+      const name = typeof e.name === 'string' ? e.name : 'DrizzleQueryError';
+      const code = pgErrorCode(exception) ?? 'brak';
+      return `${name}: kod ${code}, zapytanie: ${e.query} (parametry i ślad stosu pominięte celowo)`;
+    }
+  }
+  return exception instanceof Error
+    ? (exception.stack ?? exception.message)
+    : String(exception);
+}
 
 /** HttpException przechodzi bez zmian; wszystko inne to 500 z identyfikatorem w logu, bez szczegółów dla klienta. */
 @Catch()
@@ -39,7 +72,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const errorId = randomUUID();
     this.logger.error(
       `[${errorId}] ${req.method} ${req.url}`,
-      exception instanceof Error ? exception.stack : String(exception),
+      detailsFor(exception),
     );
 
     // Strzeżemy wyłącznie zapisu do odpowiedzi — `res.status()` po wysłanych nagłówkach
