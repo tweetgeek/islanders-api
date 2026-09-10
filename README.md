@@ -82,15 +82,16 @@ docker-compose.yml   Postgres 17 i Redis 7 do pracy lokalnej
 ## Odstępstwa od specyfikacji
 
 Implementacja w kilku miejscach świadomie odbiega od `docs/superpowers/specs/`. Pełna lista
-z uzasadnieniami jest w sekcji 4.2 tego dokumentu
+z uzasadnieniami (osiem pozycji) jest w sekcji 4.2 tego dokumentu
 (`docs/superpowers/specs/2026-09-08-backend-foundation-geography-design.md`); w skrócie:
 własny limiter zapytań zamiast `@nestjs/throttler` (konflikt wersji z Nest 12), własny
 moduł konfiguracji zamiast `@nestjs/config`, health przez proste `SELECT 1` zamiast
 `@nestjs/terminus`, nagłówek `X-Server-Time` z middleware zamiast interceptora, odczyt
 kodu błędu Postgresa przez łańcuch `cause` (bo `drizzle-orm` opakowuje błąd sterownika),
-oraz nadpisywalne porty w `docker-compose.yml`.
+nadpisywalne porty w `docker-compose.yml`, budynki startowe jako funkcja biomu zamiast
+stałej, oraz osobne kubełki limitu po adresie dla każdej trasy uwierzytelniania.
 
-Znane pozycje przedprodukcyjne (niezrealizowane, patrz sekcja 15 tego samego dokumentu):
-limiter zapytań nie chroni tras z nieprawidłowym tokenem (odrzuca je wcześniej strażnik
-uwierzytelniania), limiter po adresie IP wymaga skonfigurowania zaufania do proxy przed
-wdrożeniem za odwrotnym proxy, a rotacja tokenu odświeżającego nie jest objęta transakcją.
+Znane pozycje przedprodukcyjne są zebrane w sekcji 15 tego samego dokumentu — od limitów
+i zaufania do proxy, przez cykl modułów do rozcięcia przed specem B, po dług wydajnościowy
+i niedeterminizm zestawu e2e. Zaglądnij tam przed wdrożeniem czegokolwiek na produkcję;
+lista jest krótka i każda pozycja mówi, dlaczego została odłożona.

@@ -160,8 +160,8 @@ Skrypty npm: `db:generate`, `db:migrate`, `world:create`, `compose:up` (`docker 
 
 ### 4.2 Odstępstwa od specyfikacji
 
-Implementacja świadomie odeszła od tego, co mówi sekcja 4 i 10.4, w sześciu miejscach.
-Powody techniczne, nie stylistyczne — poniższe zastępuje wyliczenie z linii wyżej:
+Implementacja świadomie odeszła od tego, co mówią sekcje 4, 6.2 i 10.4–10.5, w ośmiu
+miejscach. Powody techniczne, nie stylistyczne — poniższe zastępuje wyliczenie z linii wyżej:
 
 1. Zamiast `@nestjs/throttler` — własny `RateLimitGuard`
    (`src/infra/http/rate-limit.guard.ts`). Powód: `@nestjs/throttler` 6.5 deklaruje
@@ -188,6 +188,14 @@ Powody techniczne, nie stylistyczne — poniższe zastępuje wyliczenie z linii 
    i `REDIS_PORT`, z domyślnymi wartościami zgodnymi z tabelą w sekcji 4.1. Powód: na
    maszynach deweloperskich te porty bywają zajęte przez inne projekty, a `compose:up`
    z flagą oczekiwania pada wtedy na całości mimo zdrowej bazy.
+7. Zamiast stałej `STARTING_BUILDINGS` (sekcja 6.2) — funkcja
+   `startingBuildings(biome): Record<Building, number>` (`src/domain/balance/balance.ts`). Powód:
+   zestaw budynków startowych zawiera „oba wydobywcze biomu", a te zależą od biomu, więc
+   jedna stała nie mogłaby spełnić własnego wymagania. Sekcja 6.2 jest już poprawiona.
+8. Limit po adresie klienta jest liczony w OSOBNYM kubełku dla każdej trasy
+   uwierzytelniania, a nie we wspólnym (`ip:${route}:${req.ip}` w
+   `src/infra/http/rate-limit.guard.ts`). Powód: wspólny kubełek pozwalałby wyczerpać
+   pulę logowania samymi żądaniami `refresh`. Sekcja 10.5 jest już doprecyzowana.
 
 ## 5. Geografia (`domain/geography`)
 
@@ -236,8 +244,11 @@ trzyma jako `Island.seed_val`.
    i porównuje `toBe` na `hash`, `land`, `biome`, `isIsland`, a dla wysp `biomeType`,
    `radius` oraz `toEqual` na `deposit`. Bez tolerancji.
 
-Osobny `geography.spec.ts` trzyma cztery złote wiersze z sekcji 4.6 wytycznych, żeby błąd
-był widoczny w sekundę. Ten test uruchamia się zawsze, także bez repozytorium klienta.
+Złote wiersze z sekcji 4.6 wytycznych trzymają trzy pliki dzielone tematycznie, po jednym
+na moduł geografii: `hash.spec.ts`, `noise.spec.ts` i `island.spec.ts` (zamiast jednego
+`geography.spec.ts` — podział jest lepszy, bo czerwony plik od razu wskazuje warstwę,
+w której rozjechała się generacja). Te testy uruchamiają się zawsze, także bez repozytorium
+klienta, i mają pokazać błąd w sekundę.
 
 ## 6. Reguły i balans
 
@@ -264,7 +275,7 @@ i czasy, nie zmieniając sygnatur.
 
 | Co | Wartość |
 |---|---|
-| `STARTING_BUILDINGS` | TOWN_HALL 1, WAREHOUSE 1, oba wydobywcze biomu 1, BARRACKS 0, SHIPYARD 0 |
+| `startingBuildings(biome): Record<Building, number>` | TOWN_HALL 1, WAREHOUSE 1, oba wydobywcze biomu 1, BARRACKS 0, SHIPYARD 0 — funkcja, nie stała, bo zbiór budynków zależy od biomu |
 | `STARTER_PACK` | wood 500, stone 200, food 1000, iron 40, sulfur 0 (jednakowy dla biomów) |
 | `BASE_RATE` na godzinę | SAWMILL 60, QUARRY 50, FARM 80, IRON_MINE 30, SULFUR_PIT 20 |
 | `productionPerHour(biome, levels)` | dla każdego zasobu `BASE_RATE[budynek] * level`, zasób spoza biomu zawsze 0 |
@@ -454,8 +465,17 @@ pole `serverTime` do każdej odpowiedzi będącej zwykłym obiektem; tablice zos
 
 Własny `RateLimitGuard` (stałe okno w pamięci procesu; Redis dojdzie w C):
 
-- trasy uwierzytelnione: 120 żądań / minutę na `playerId`;
-- `register`, `login`, `refresh`: 10 żądań / minutę na adres IP.
+- trasy uwierzytelnione: 120 żądań / minutę na `playerId`, w JEDNYM kubełku wspólnym dla
+  wszystkich tras gracza;
+- `register`, `login`, `refresh`, `logout`: 10 żądań / minutę na adres IP, w OSOBNYM
+  kubełku dla KAŻDEJ z tych czterech tras (klucz zawiera nazwę trasy). Wspólny kubełek
+  pozwalałby wyczerpać pulę logowania samymi żądaniami `refresh`; osobne sprawiają, że
+  napastnik dostaje 10 prób na trasę, a nie 10 na cztery trasy razem.
+
+`logout` jest limitowany mimo braku uwierzytelnienia, bo jest publiczny i pisze do bazy
+(`SELECT` po unikalnym indeksie, przy trafieniu `UPDATE`).
+
+Trasa zdrowia (`GET /health`) świadomie NIE jest limitowana — patrz sekcja 15.
 
 Przekroczenie → 429.
 
@@ -489,7 +509,11 @@ Twierdzenie bez wyjścia komendy nie jest dowodem.
 - `WorldWritableGuard`: przepuszcza `OPEN` i `CLOSED`, odrzuca `ENDED` z 409;
 - `SettlementViews`: `ownerName` obecny w obu widokach;
 - `pickHomeIsland`: fałszywy `isTaken`, sprawdzenie biomu, granic mapy, pierścienia,
-  `null` dla pełnej mapy.
+  `null` dla pełnej mapy;
+- walidacja env: brak `JWT_SECRET` (i `JWT_SECRET` krótszy niż 32 znaki) kończy się
+  błędem walidacji. To test JEDNOSTKOWY na `parseEnv` (`src/infra/config/env.spec.ts`)
+  i to jest właściwe miejsce: sprawdzana jest czysta funkcja walidująca, więc podnoszenie
+  kontenera Postgresa tylko po to, żeby aplikacja nie wstała, nic by nie dowiodło ponad to.
 
 **E2E** (`npm run test:e2e`, `**/*.e2e-spec.ts`, jeden kontener Postgres z Testcontainers
 na cały przebieg, migracje przed startem, `supertest`):
@@ -508,7 +532,7 @@ na cały przebieg, migracje przed startem, `supertest`):
   `ships` i `cargo`, a wiersz `TRANSPORT` cudzy nie jest widoczny;
 - `X-Server-Time` na każdej odpowiedzi, `serverTime` w `state` i `join`;
 - Etap 0: `GET /api/v1/health` → 200; `/api/docs-json` → 200 przy `SWAGGER_ENABLED=true`
-  i 404 przy `false`; start aplikacji bez `JWT_SECRET` kończy się błędem walidacji env;
+  i 404 przy `false`;
 - 429 po przekroczeniu limitu `login`;
 - baza: `INSERT` do `buildings` z `SAWMILL` na osadzie `VOLCANIC` kończy się błędem klucza
   obcego.
@@ -541,17 +565,121 @@ Nie jest częścią A, ale wynika z niego i powinna trafić do zaległości klie
 
 ## 15. Pozycje przedprodukcyjne (niezrealizowane)
 
-Wykryte w recenzji, świadomie niezaadresowane w specu A. Żadna nie blokuje wdrożenia specu
-A, ale wszystkie mają wrócić przed produkcją:
+Wykryte w recenzjach zadaniowych i w przeglądzie końcowym całej gałęzi, świadomie
+niezaadresowane w specu A. Żadna nie blokuje wdrożenia specu A, ale wszystkie mają wrócić
+przed produkcją. Lista powstała z materiałów roboczych przeglądu (`.superpowers/`, katalog
+ignorowany przez git) i została tu przeniesiona celowo — tam przepadłaby razem z gałęzią.
 
-- Ruch z nieprawidłowym tokenem na trasy chronione nie dotyka `RateLimitGuard`, bo
-  `JwtAuthGuard` odrzuca żądanie wcześniej (kolejność strażników w `AppModule`). Naprawa
-  wymaga limitera działającego przed uwierzytelnianiem i należy do specu wprowadzającego
-  Redis (C).
-- Limit po adresie klienta (`RateLimitGuard`, klucz `ip:*`) wymaga włączenia zaufania do
-  proxy (`app.set('trust proxy', ...)`) przed wdrożeniem za odwrotnym proxy; bez tego staje
-  się limitem globalnym dla wszystkich użytkowników. Ostrzeżenie jest już w kodzie strażnika.
-- Rotacja tokenu odświeżającego (`AuthService.refresh`) nie jest objęta transakcją: nowa
-  para wraca do klienta przed unieważnieniem starej (`refreshTokens.revoke` woła się po
-  `issue`). Okno łaski 60 s to toleruje z założenia, ale pozycja należy do przeglądu
+### 15.1 Bezpieczeństwo i limity
+
+- **Ruch z nieprawidłowym tokenem nie dotyka limitera.** Na trasach chronionych
+  `JwtAuthGuard` odrzuca żądanie przed `RateLimitGuard` (kolejność strażników
+  w `AppModule`), więc zalewanie ich złymi tokenami nie zużywa żadnego kubełka. Naprawa
+  wymaga limitera działającego PRZED uwierzytelnianiem i należy do specu wprowadzającego
+  Redis (C). Kluczowanie po IP wewnątrz obecnego strażnika niczego nie zmienia, bo
+  strażnik w ogóle się nie wykonuje.
+- **Limit po adresie wymaga zaufania do proxy.** `RateLimitGuard` (klucz `ip:*`) czyta
+  `req.ip`, które za odwrotnym proxy jest adresem proxy. Bez `app.set('trust proxy', ...)`
+  o zasięgu dopasowanym do topologii limit po adresie staje się limitem GLOBALNYM:
+  dziesięć nieudanych logowań jednego napastnika blokuje logowanie wszystkim. Ostrzeżenie
+  stoi w kodzie strażnika; topologia nie jest jeszcze ustalona.
+- **Rotacja tokenu odświeżającego nie jest objęta transakcją.** W `AuthService.refresh`
+  nowa para wraca do klienta przed unieważnieniem starej (`refreshTokens.revoke` woła się
+  po `issue`). Okno łaski 60 s to toleruje z założenia, ale pozycja należy do przeglądu
   hardeningowego.
+- **Trasa zdrowia świadomie NIE jest limitowana.** `GET /health` jest publiczna i odpytuje
+  ją load balancer — limit po adresie zrobiłby z niej fałszywy alarm i wywrócił rotację
+  instancji dokładnie wtedy, gdy system jest pod obciążeniem. Gdyby trasa miała być
+  publicznie osiągalna na produkcji, właściwym środkiem NIE jest limit, tylko krótkie
+  cache'owanie wyniku pingu bazy (rzędu sekundy), żeby zalew żądań nie zamieniał się
+  w zalew zapytań `SELECT 1`. Do rozważenia razem z decyzją o wystawieniu trasy.
+- **Wyciek parametrów zapytania do logu — naprawiony, ale wart pilnowania.**
+  `AllExceptionsFilter` rozpoznaje błąd zapytania Drizzle po kształcie (`query` + `params`)
+  i nie loguje wtedy ani `params`, ani stosu, bo `drizzle-orm` 0.45 wkleja parametry do
+  komunikatu błędu, a parametry zapisu to skrót argon2 hasła albo skrót tokenu
+  odświeżającego. Gdyby przyszła wersja drizzle zmieniła nazwy pól albo gdyby inna
+  biblioteka zaczęła opakowywać błędy sterownika inaczej, osłona przestanie działać
+  po cichu — rozpoznanie jest po kształcie, nie po `instanceof`. Test
+  `src/infra/http/all-exceptions.filter.spec.ts` pilnuje samego zachowania, nie zgodności
+  z kolejną wersją biblioteki.
+
+### 15.2 Struktura modułów
+
+- **Cykl `WorldsModule` ⇄ `SettlementsModule`**, dziś rozwiązany `forwardRef`
+  (`worlds.module.ts:11` i `settlements.module.ts:8`). Zalecenie: rozciąć go PRZED
+  rozpoczęciem specu B, wydzielając moduł dostępu do świata (`WorldsRepository`,
+  `ProfilesRepository`, `ProfileGuard`, `WorldWritableGuard`), od którego zależą oba
+  dzisiejsze moduły, zamiast żeby zależały od siebie nawzajem. Powód terminu:
+  `WorldWritableGuard` jest dziś tylko zarejestrowany w module i pokryty testem
+  jednostkowym, ale nie stoi jeszcze na ŻADNEJ trasie, bo spec A prawie nie ma zapisów;
+  spec B doda zapisy i strażnik trafi na około pięć tras. Rozcięcie cyklu po tym kroku
+  robi się zmianą pod presją w połowie specu. To zmiana strukturalna, świadomie
+  NIEwykonana w specu A.
+
+### 15.3 Wydajność (do specu B)
+
+Obie pozycje wymagają zmiany sygnatur repozytoriów, więc świadomie nie zostały ruszone.
+
+- **Poziomy budynków pobierane także dla cudzych osad.** Odczyt osad po `bbox` wciąga
+  poziomy budynków dla wszystkich osad w prostokącie, w tym cudzych, mimo że `publicView`
+  i tak ich nie pokazuje. Przy gęsto zasiedlonym prostokącie to praca wykonana po to, żeby
+  ją wyrzucić. Naprawa: ograniczyć zapytanie o budynki do osad własnych.
+- **Dołączanie do świata czyta współrzędne wszystkich osad.** `SettlementsRepository.listCoords`
+  pobiera komplet współrzędnych świata przy KAŻDEJ próbie dołączenia (i przy każdym
+  ponowieniu po wyścigu). Koszt rośnie liniowo z zaludnieniem świata dokładnie w momencie,
+  gdy świat się zaludnia. Naprawa: pytać o zajętość punktowo albo w promieniu losowania.
+
+### 15.4 Migracje i operacje
+
+- **Wycofywanie migracji jest ręczne.** `drizzle-kit` nie generuje migracji w dół, więc
+  każde wycofanie wymaga napisanego ręcznie SQL-a. Przed produkcją trzeba ustalić procedurę
+  wycofania (a przynajmniej: które migracje są odwracalne, a które nie).
+- Migracja słownikowa `0002` jest idempotentna (`ON CONFLICT DO NOTHING`); pozostałe nie są
+  i ponowne ręczne zastosowanie ich padnie.
+
+### 15.5 Kontrakt i ergonomia API
+
+- `GET /worlds` nie ma stronicowania — przy dzisiejszej liczbie światów bez znaczenia.
+- Brak górnej granicy wymiarów świata przy tworzeniu (decyzja balansowa, nie techniczna).
+- `homeSettlement` jest w Swaggerze opisane jako opcjonalne, choć pole jest zawsze obecne
+  (bywa `null`) — opis rozmija się z zachowaniem.
+- `world:create` wypisuje ślad stosu `RangeError` zamiast jednolinijkowego komunikatu, gdy
+  argumenty są poza zakresem.
+
+### 15.6 Dług w testach i narzędziach
+
+- **Niedeterminizm zestawu e2e — pozycja OTWARTA.** Zestaw e2e sporadycznie zwraca status,
+  którego żadna ścieżka kodu nie produkuje: zaobserwowano `501` przy rejestracji, a przy
+  przeglądzie końcowym także `404` na `POST /worlds/:id/join`, `401` na publicznej trasie
+  rejestracji i `404` na `POST /auth/login`. Zjawisko odtworzono na NIEZMIENIONYM kodzie
+  gałęzi (`3b9f047`, 1 przebieg wadliwy na 6), więc nie pochodzi z poprawek pofinałowych.
+  Wspólny kształt — sporadyczny, nieprawdziwy status na żądaniu, które musi się udać —
+  wskazuje na harness (`supertest` + wiele instancji aplikacji Nest na plik testowy,
+  wspólny kontener Postgresa), a nie na kod produkcyjny. Do zdiagnozowania przed oparciem
+  o ten zestaw jakiejkolwiek bramki CI; dziś objawia się jako rzadka czerwona kropka przy
+  zielonym powtórzeniu.
+- Nieużywany `depositsTaken` w schemacie bazy jest ZAMIERZONY — tabela czeka na spec C.
+  Nie usuwać przy sprzątaniu martwego kodu.
+- `test/support/test-app.ts` niesie dużą atrapę domyślnych zmiennych środowiskowych,
+  odziedziczoną przez wszystkie zestawy e2e; zmiana wartości dotyka wszystkiego naraz.
+- Drobne: `isUniqueViolation` i `isForeignKeyViolation` dzielą cztery linie, które można
+  scalić; pliki generowane przez `drizzle-kit` nie kończą się znakiem nowej linii; powtórny
+  `db:migrate` wypisuje `NOTICE` Postgresa (do wyciszenia przez `onnotice` w `migrate.ts`);
+  `.env.example` nie ostrzega, że zmiana `POSTGRES_PORT` wymaga zmiany `DATABASE_URL`;
+  `SettlementsRepository.load` robi dwa zapytania zamiast jednego z `LEFT JOIN`;
+  `@RateLimit('player')` postawione na trasie anonimowej po cichu degraduje do limitu po IP.
+
+### 15.7 Rozstrzygnięcia zaparkowane (zamknięte, zapisane dla pamięci)
+
+Cztery znaleziska recenzji zamknięto bez zmiany w kodzie. Zapisane, żeby nie wracały jako
+„nowe" przy kolejnym przeglądzie:
+
+- **Brak `enableShutdownHooks` w `main.ts`** — fałszywy alarm. `configureApp` woła
+  `app.enableShutdownHooks()`, a `main.ts` woła `configureApp` po `NestFactory.create`
+  i przed `app.listen`. Recenzent i implementer czytali wyłącznie `main.ts`.
+- **Pozytywna ścieżka `JwtAuthGuard` bez testu w swoim zadaniu** — celowe: pokrywają ją
+  testy pierwszych tras chronionych, wprowadzonych zadanie później.
+- **Limiter nieosiągalny dla złych tokenów** — trafne, ale proponowana wtedy naprawa go nie
+  rozwiązywała; przeniesione do 15.1 jako pozycja dla specu C.
+- **Rzekome rozszerzenie zakresu w zadaniu limitera** — fałszywy alarm, kwestionowana linia
+  stała dosłownie w briefie i w planie.
