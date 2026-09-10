@@ -95,6 +95,7 @@ export class AuthService implements OnModuleInit {
       if (isUniqueViolation(err, 'players_email_unique')) {
         throw new ConflictException({
           statusCode: 409,
+          error: 'Conflict',
           message: 'E-mail jest już zajęty',
           field: 'email',
         });
@@ -102,6 +103,7 @@ export class AuthService implements OnModuleInit {
       if (isUniqueViolation(err, 'players_nickname_unique')) {
         throw new ConflictException({
           statusCode: 409,
+          error: 'Conflict',
           message: 'Pseudonim jest już zajęty',
           field: 'nickname',
         });

@@ -101,6 +101,22 @@ describe('worlds (e2e)', () => {
       .get('/api/v1/worlds/abc/state')
       .set('Authorization', bearer(p.accessToken))
       .expect(404);
+    // Zapisy niedziesiętne WSKAZUJĄCE NA ISTNIEJĄCY ŚWIAT: `Number()` rozwiązuje każdy
+    // z nich na `world.id`, więc przed poprawką trasa docierała do sprawdzenia profilu
+    // i odpowiadała 403. Teraz odpada na parsowaniu — 404, dokładnie jak `join`
+    // z `ParseIntPipe`. Gdyby test użył stałej w rodzaju `0x10`, przechodziłby także
+    // na starym kodzie, bo świat 16 i tak nie istnieje.
+    for (const zapis of [
+      `0x${world.id.toString(16)}`,
+      `${world.id}e0`,
+      `+${world.id}`,
+      ` ${world.id}`,
+    ]) {
+      await http()
+        .get(`/api/v1/worlds/${encodeURIComponent(zapis)}/state`)
+        .set('Authorization', bearer(p.accessToken))
+        .expect(404);
+    }
     await http()
       .get(`/api/v1/worlds/${world.id}/state`)
       .set('Authorization', bearer(p.accessToken))

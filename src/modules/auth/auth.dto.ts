@@ -70,6 +70,7 @@ export class TokenPairDto {
 
 export class ConflictFieldDto {
   @ApiProperty({ example: 409 }) statusCode!: number;
+  @ApiProperty({ example: 'Conflict' }) error!: string;
   @ApiProperty({ example: 'E-mail jest już zajęty' }) message!: string;
   @ApiPropertyOptional({ example: 'email' }) field?: string;
 }

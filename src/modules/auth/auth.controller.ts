@@ -55,6 +55,7 @@ export class AuthController {
   }
 
   @Post('logout')
+  @RateLimit('ip')
   @HttpCode(204)
   async logout(@Body() dto: RefreshDto): Promise<void> {
     await this.auth.logout(dto.refreshToken);

@@ -23,7 +23,10 @@ export class HealthController {
     try {
       await this.db.execute(sql`SELECT 1`);
     } catch (err) {
-      this.logger.error('Baza niedostępna', err);
+      this.logger.error(
+        'Baza niedostępna',
+        err instanceof Error ? err.stack : String(err),
+      );
       throw new ServiceUnavailableException({ status: 'down', db: 'down' });
     }
     return { status: 'ok', db: 'up' };

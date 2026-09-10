@@ -71,6 +71,16 @@ describe('auth (e2e)', () => {
         password: 'haslo-testowe-123',
       })
       .expect(409);
+    // Pełna koperta z sekcji 11 specyfikacji: `error` obok `field`, nie zamiast niego.
+    expect(Object.keys(res.body).sort()).toEqual([
+      'error',
+      'field',
+      'message',
+      'statusCode',
+    ]);
+    expect(res.body.statusCode).toBe(409);
+    expect(res.body.error).toBe('Conflict');
+    expect(res.body.message).toBe('E-mail jest już zajęty');
     expect(res.body.field).toBe('email');
   });
 
@@ -84,6 +94,16 @@ describe('auth (e2e)', () => {
         password: 'haslo-testowe-123',
       })
       .expect(409);
+    // Pełna koperta z sekcji 11 specyfikacji: `error` obok `field`, nie zamiast niego.
+    expect(Object.keys(res.body).sort()).toEqual([
+      'error',
+      'field',
+      'message',
+      'statusCode',
+    ]);
+    expect(res.body.statusCode).toBe(409);
+    expect(res.body.error).toBe('Conflict');
+    expect(res.body.message).toBe('Pseudonim jest już zajęty');
     expect(res.body.field).toBe('nickname');
   });
 

@@ -133,8 +133,16 @@ export class WorldsService {
           });
         });
       } catch (err) {
-        // ktoś wziął tę wyspę w międzyczasie — losujemy jeszcze raz
-        if (isUniqueViolation(err, 'settlements_pk')) continue;
+        // Ktoś wziął tę wyspę w międzyczasie — losujemy jeszcze raz. Współrzędne osady
+        // chronią DWA ograniczenia unikalne; w praktyce Postgres zgłasza klucz główny, ale
+        // to obserwacja, nie gwarancja z dokumentacji, a druga nazwa zamieniłaby wyścig
+        // w błąd serwera zamiast w ponowienie.
+        if (
+          isUniqueViolation(err, 'settlements_pk') ||
+          isUniqueViolation(err, 'settlements_world_xy_biome_unique')
+        ) {
+          continue;
+        }
         if (isUniqueViolation(err, 'profiles_pk')) {
           throw new ConflictException('Masz już profil na tym świecie');
         }
