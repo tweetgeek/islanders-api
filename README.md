@@ -31,6 +31,12 @@ npm run test:e2e                # HTTP na Postgresie z Testcontainers — wymaga
 npm run test:cov                # jednostkowe z pokryciem
 ```
 
+Serwer testowy w `test/support/test-app.ts` wiąże się jawnie z `127.0.0.1` przez
+`app.listen(0, '127.0.0.1')` zamiast kończyć na `app.init()`: bez jawnego adresu supertest
+wiąże przed każdym żądaniem gniazdo dwustosowe `::`, co na macOS potrafi po cichu trafić
+w port trzymany przez zupełnie inny, obcy proces nasłuchujący wyłącznie po IPv4 — patrz
+komentarz nad `createTestApp` oraz sekcja 15.6 specyfikacji.
+
 Wśród testów jednostkowych jest test zgodności geografii
 (`src/domain/geography/world-parity.spec.ts`): czyta plik
 `${ISLANDERS_CLIENT_DIR}/contract/world-parity.json` z repozytorium klienta Godot
@@ -93,5 +99,5 @@ stałej, oraz osobne kubełki limitu po adresie dla każdej trasy uwierzytelnian
 
 Znane pozycje przedprodukcyjne są zebrane w sekcji 15 tego samego dokumentu — od limitów
 i zaufania do proxy, przez cykl modułów do rozcięcia przed specem B, po dług wydajnościowy
-i niedeterminizm zestawu e2e. Zaglądnij tam przed wdrożeniem czegokolwiek na produkcję;
-lista jest krótka i każda pozycja mówi, dlaczego została odłożona.
+i w testach. Zaglądnij tam przed wdrożeniem czegokolwiek na produkcję; lista jest krótka
+i każda pozycja mówi, dlaczego została odłożona.

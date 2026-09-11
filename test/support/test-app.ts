@@ -33,7 +33,8 @@ export interface CreateTestAppOptions {
  * serwer na tym porcie powoduje konflikt i jądro przydziela inny port, a gdy obcy serwer stoi
  * na masce (`*` albo `::`), to MY jesteśmy dopasowaniem szczegółowym i to my dostajemy żądanie.
  * Skoro serwer już nasłuchuje, supertest go nie podnosi ani nie zamyka — z ~130 związań portu
- * na przebieg robi się siedem, po jednym na plik.
+ * na przebieg robi się dziewięć: siedem plików e2e wołają `createTestApp` raz, a
+ * `health.e2e-spec.ts` woła ją trzykrotnie (jedna aplikacja na `it`), więc 6 + 3 = 9.
  */
 export async function createTestApp(
   options: CreateTestAppOptions = {},

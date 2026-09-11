@@ -602,6 +602,26 @@ ignorowany przez git) i została tu przeniesiona celowo — tam przepadłaby raz
   po cichu — rozpoznanie jest po kształcie, nie po `instanceof`. Test
   `src/infra/http/all-exceptions.filter.spec.ts` pilnuje samego zachowania, nie zgodności
   z kolejną wersją biblioteki.
+- **Wzorzec ukrywania parametrów zapytania w logu żyje tylko w jednym miejscu.**
+  `detailsFor` (`src/infra/http/all-exceptions.filter.ts`) jest funkcją modułowo-prywatną,
+  więc `HealthController` — jedyne inne miejsce, które loguje błąd bazy — nie może użyć
+  tego samego wzorca filtrowania. Dziś to nie cieknie: `SELECT 1` nie ma parametrów,
+  a wyjątek, który `HealthController` rzuca dalej, jest `HttpException`, więc
+  `AllExceptionsFilter` go nie loguje powtórnie. Ryzyko na przyszłość: kolejne miejsce,
+  które zaloguje obiekt błędu z zapytania parametryzowanego, ominie osłonę bez żadnego
+  sygnału. Zalecenie: wyeksportować `detailsFor` albo przenieść je obok `pgErrorCode`
+  w `src/infra/db/pg-errors.ts` i użyć w obu miejscach.
+- **Wyjątek HTTP z kodem 5xx omija czyszczenie w filtrze wyjątków.** `AllExceptionsFilter`
+  traktuje każdy `HttpException` jako zamierzoną część kontraktu i nigdy go nie loguje —
+  ale to rozróżnienie jest po TYPIE, nie po kodzie statusu. Dziś żaden kod świadomie nie
+  rzuca `HttpException` z kodem 5xx, więc gałąź jest martwa; gdyby ktoś kiedyś tak zrobił
+  (np. `ServiceUnavailableException` z niestandardową treścią), awaria przeszłaby przez
+  aplikację bez żadnego wpisu w logu.
+- **Sprzątanie kubełków limitera jest liniowe.** `RateLimitGuard.sweep`
+  (`src/infra/http/rate-limit.guard.ts`) przechodzi całą mapę dopiero po przekroczeniu
+  10 000 wpisów — poniżej progu kubełki z minionym oknem zalegają w pamięci, a powyżej
+  progu każde nowe okno czasowe może wywołać przejście O(n) po całej mapie. Nieszkodliwe
+  przy dzisiejszym ruchu jednej instancji; do przeglądu razem z przejściem na Redis w specu C.
 
 ### 15.2 Struktura modułów
 
@@ -645,34 +665,95 @@ Obie pozycje wymagają zmiany sygnatur repozytoriów, więc świadomie nie zosta
   (bywa `null`) — opis rozmija się z zachowaniem.
 - `world:create` wypisuje ślad stosu `RangeError` zamiast jednolinijkowego komunikatu, gdy
   argumenty są poza zakresem.
+- `ProfileGuard` parsuje `:id` przez `Number()` zamiast przez `ParseIntPipe`, więc zapisy
+  spoza dziesiętnych (np. `0x10`) parsują się jako liczba (`0x10` → świat 16) zamiast
+  odrzucić żądanie jako błędne. Nieszkodliwe dziś (skutek to najwyżej 404 na złym
+  identyfikatorze), ale niespójne z `ParseIntPipe`, którego reszta tras używa.
 
 ### 15.6 Dług w testach i narzędziach
 
-- **Niedeterminizm zestawu e2e — pozycja OTWARTA.** Zestaw e2e sporadycznie zwraca status,
-  którego żadna ścieżka kodu nie produkuje: zaobserwowano `501` przy rejestracji, a przy
-  przeglądzie końcowym także `404` na `POST /worlds/:id/join`, `401` na publicznej trasie
-  rejestracji i `404` na `POST /auth/login`. Zjawisko odtworzono na NIEZMIENIONYM kodzie
-  gałęzi (`3b9f047`, 1 przebieg wadliwy na 6), więc nie pochodzi z poprawek pofinałowych.
-  Wspólny kształt — sporadyczny, nieprawdziwy status na żądaniu, które musi się udać —
-  wskazuje na harness (`supertest` + wiele instancji aplikacji Nest na plik testowy,
-  wspólny kontener Postgresa), a nie na kod produkcyjny. Do zdiagnozowania przed oparciem
-  o ten zestaw jakiejkolwiek bramki CI; dziś objawia się jako rzadka czerwona kropka przy
-  zielonym powtórzeniu.
+- **Niedeterminizm zestawu e2e — ROZWIĄZANY.** Zestaw e2e sporadycznie zwracał status,
+  którego żadna ścieżka kodu nie produkuje (`501` przy rejestracji, `404` na
+  `POST /auth/login`, `401` na `GET /worlds` z poprawnym tokenem). Przyczyna: harness
+  budowy aplikacji (`test/support/test-app.ts`) kończył na `app.init()`, więc serwer HTTP
+  nie nasłuchiwał, a `supertest` przed każdym żądaniem sam wiązał gniazdo `server.listen(0)`
+  bez podanego adresu. Takie gniazdo jest dwustosowe (`::`, IPv6 z trybem dual-stack), a jądro
+  macOS pozwala je związać na porcie, który już trzyma obcy proces nasłuchujący WYŁĄCZNIE
+  po IPv4 na `127.0.0.1` — bez `EADDRINUSE` i bez ostrzeżenia. `supertest` łączy się pod
+  `http://127.0.0.1:<port>`, gdzie dla adresu IPv4 wygrywa dopasowanie bardziej szczegółowe,
+  czyli gniazdo OBCE — więc żądania testowe, razem z hasłami, refresh tokenami i nagłówkiem
+  `Authorization`, trafiały do cudzych procesów na tej samej maszynie, a test dostawał ich
+  odpowiedź. Naprawa: jawne `app.listen(0, '127.0.0.1')` raz na plik zamiast `app.init()`
+  (`test/support/test-app.ts`). Dowód przyczyny i naprawy w
+  `.superpowers/sdd/2026-09-08-backend-foundation-geography/flake-report.md` (usuwany razem
+  z katalogiem roboczym): odtworzenie wrogiego scenariusza dawało 28 porażek na 37 testów
+  przed naprawą i 0 po niej (trzy pełne przebiegi), a 25 pełnych przebiegów zestawu e2e pod
+  rząd nie dało ani jednej porażki. Wniosek wart zapamiętania poza tym projektem: uruchamianie
+  testów, które wiążą gniazda nasłuchujące bez jawnego adresu, może po cichu wysyłać dane
+  uwierzytelniające do nieoczekiwanych procesów na tej samej maszynie.
+- **Gałąź logująca awarię bazy w `HealthController` nie ma trwałego testu.** Kod
+  (`src/modules/health/health.controller.ts`) łapie błąd `SELECT 1`, loguje go i rzuca
+  `ServiceUnavailableException`, ale żaden test w `test/health.e2e-spec.ts` nie stawia
+  aplikacji z zerwanym połączeniem do bazy, więc ta gałąź może się zepsuć bez czerwonego
+  testu. Wymaga aplikacji z celowo złym `DATABASE_URL` po starcie; podczas Task 4 zweryfikowano
+  ją jednorazowym testem, a potem go usunięto, i żadna z późniejszych fal poprawek (w tym ta,
+  która przeszła dokładnie przez tę linię przy okazji filtra wyjątków) go nie odtworzyła.
 - Nieużywany `depositsTaken` w schemacie bazy jest ZAMIERZONY — tabela czeka na spec C.
   Nie usuwać przy sprzątaniu martwego kodu.
 - `test/support/test-app.ts` niesie dużą atrapę domyślnych zmiennych środowiskowych,
   odziedziczoną przez wszystkie zestawy e2e; zmiana wartości dotyka wszystkiego naraz.
 - Drobne: `isUniqueViolation` i `isForeignKeyViolation` dzielą cztery linie, które można
-  scalić; pliki generowane przez `drizzle-kit` nie kończą się znakiem nowej linii; powtórny
-  `db:migrate` wypisuje `NOTICE` Postgresa (do wyciszenia przez `onnotice` w `migrate.ts`);
-  `.env.example` nie ostrzega, że zmiana `POSTGRES_PORT` wymaga zmiany `DATABASE_URL`;
-  `SettlementsRepository.load` robi dwa zapytania zamiast jednego z `LEFT JOIN`;
-  `@RateLimit('player')` postawione na trasie anonimowej po cichu degraduje do limitu po IP.
+  scalić; powtórny `db:migrate` wypisuje `NOTICE` Postgresa (do wyciszenia przez `onnotice`
+  w `migrate.ts`); `.env.example` nie ostrzega, że zmiana `POSTGRES_PORT` wymaga zmiany
+  `DATABASE_URL`; `SettlementsRepository.load` robi dwa zapytania zamiast jednego
+  z `LEFT JOIN`; `@RateLimit('player')` postawione na trasie anonimowej po cichu degraduje
+  do limitu po IP; klucz metadanych `RATE_LIMIT` (`src/infra/http/rate-limit.guard.ts`) jest
+  gołym łańcuchem `'rateLimit'` zamiast `Symbol`, więc teoretycznie mógłby się zderzyć
+  z metadanymi innego dekoratora.
+
+**Higiena konfiguracji testowej i env** (drobiazgi, nieszkodliwe, warte jednego zamiatania
+przy okazji):
+
+- `.gitignore` wpisuje `.env` dwa razy — raz w bloku startera (`dotenv environment variable
+  files`), raz w bloku dopisanym przez Task 1 (`Konfiguracja lokalna`). Skutek zerowy
+  (`.gitignore` toleruje duplikaty), ale drugi wpis jest zbędny.
+- `test/support/global-setup.ts` ustawia `process.env.DATABASE_URL` po starcie kontenera
+  Testcontainers, ale żaden test go nie czyta — cały harness dostaje adres bazy przez
+  `inject('databaseUrl')` (zadeklarowane w `vitest.d.ts`), nie przez zmienną środowiskową.
+  Nieszkodliwe, ale martwe.
+- Sygnatura `parseEnv` (`src/infra/config/env.ts`) jest węższa niż proza briefu, która mówiła
+  o `ProcessEnv | Record<string, string | undefined>` — kod przyjmuje tylko drugie. Bez
+  znaczenia w praktyce, bo `process.env` i tak strukturalnie pasuje do tego typu.
+- `*.tsbuildinfo` w `.gitignore` wykracza poza listę plików z briefu Task 2 — uzasadnione
+  i ujawnione w swoim czasie (artefakt przyrostowej kompilacji TypeScript), nie wymaga
+  dalszego działania.
+
+**Kosmetyka testów geografii i osad** (świadome, udokumentowane tu, żeby nikt nie zgłaszał
+tego samego drugi raz):
+
+- `lattice` i `smooth` (`src/domain/geography/noise.ts`) są publiczne przez barrel
+  `domain/geography/index.ts`, choć u klienta Godot odpowiedniki są prywatne
+  (`_lattice`/`_smooth`). Świadome: test szumu i test zgodności bit-w-bit z klientem
+  potrzebują bezpośredniego dostępu do obu funkcji, żeby porównać wartości pośrednie,
+  a nie tylko wynik końcowy `valueNoise`/`fbm`.
+- Test zakresu `hashCell` (`src/domain/geography/hash.spec.ts`) iteruje po przypadkach
+  w zwykłej pętli `for` zamiast przez `it.each` — porażka wskaże błędną wartość, ale nie
+  wskaże, który przypadek z listy ją wyprodukował.
+- Test dwóch oktaw `fbm` (`src/domain/geography/noise.spec.ts`) odtwarza w ciele testu tę
+  samą pętlę sumowania co implementacja — wygląda tautologicznie, ale sprawdza kolejność
+  operacji zmiennoprzecinkowych (`total += amp * noise; norm += amp; amp *= 0.5`), która
+  ma znaczenie dla zgodności bit-w-bit z klientem, więc duplikacja tu ma sens.
+- Test bbox w `worlds.e2e-spec.ts` (dołączanie do świata) zależy od geografii dla ziarna
+  `1337` (pierścienie 0–4 puste, pierścień 5 ma dwie kandydatki), żeby dowieść złączenia
+  osad dwóch różnych właścicieli. Regresja geografii dla tego ziarna zepsułaby ten test
+  głośno (asercja na liczbę kandydatek), nie cicho, więc zależność jest zaakceptowana.
+  Ten sam plik ma jedną asercję na brak `buildings` u cudzej osady, która jest redundantna
+  względem sąsiedniej asercji pełnej treści obiektu (`toEqual`) — nieszkodliwa, tylko zbędna.
 
 ### 15.7 Rozstrzygnięcia zaparkowane (zamknięte, zapisane dla pamięci)
 
-Cztery znaleziska recenzji zamknięto bez zmiany w kodzie. Zapisane, żeby nie wracały jako
-„nowe" przy kolejnym przeglądzie:
+Pięć znalezisk recenzji zamknięto bez zmiany w kodzie (albo z decyzją, że zmiana nigdy nie
+jest warta zachodu). Zapisane, żeby nie wracały jako „nowe" przy kolejnym przeglądzie:
 
 - **Brak `enableShutdownHooks` w `main.ts`** — fałszywy alarm. `configureApp` woła
   `app.enableShutdownHooks()`, a `main.ts` woła `configureApp` po `NestFactory.create`
@@ -683,3 +764,6 @@ Cztery znaleziska recenzji zamknięto bez zmiany w kodzie. Zapisane, żeby nie w
   rozwiązywała; przeniesione do 15.1 jako pozycja dla specu C.
 - **Rzekome rozszerzenie zakresu w zadaniu limitera** — fałszywy alarm, kwestionowana linia
   stała dosłownie w briefie i w planie.
+- **Pliki generowane przez `drizzle-kit` nie kończą się znakiem nowej linii.** Nigdy nie
+  warte naprawy: to wyjście narzędzia (`npm run db:generate`), nie kod, który ten projekt
+  pisze ręcznie — każde kolejne uruchomienie generatora i tak nadpisze każdą ręczną poprawkę.
