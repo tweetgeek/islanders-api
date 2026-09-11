@@ -47,6 +47,10 @@ export async function createTestApp(
     JWT_REFRESH_TTL: '30d',
     // Testy rejestrują dziesiątki kont z jednego IP; limit produkcyjny (10) sprawdza osobno http.e2e-spec.ts
     RATE_LIMIT_AUTH_PER_MINUTE: '100000',
+    REDIS_URL: inject('redisUrl'),
+    // Worker wyłączony domyślnie: testy integracyjne wołają serwis rozstrzygania wprost,
+    // a pojedynczy test e2e włącza go jawnie, żeby udowodnić, że przejściówka jest podpięta.
+    WORKER_ENABLED: 'false',
     ...options.env,
   });
   let builder = Test.createTestingModule({ imports: [AppModule.forRoot(env)] });

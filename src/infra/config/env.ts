@@ -39,6 +39,15 @@ export const envSchema = z
     SWAGGER_ENABLED: z.enum(['true', 'false']).optional(),
     RATE_LIMIT_AUTH_PER_MINUTE: z.coerce.number().int().min(1).default(10),
     RATE_LIMIT_PLAYER_PER_MINUTE: z.coerce.number().int().min(1).default(120),
+    SWEEP_INTERVAL_MS: z.coerce.number().int().min(1000).default(60_000),
+    WORKER_ENABLED: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((v) => v === 'true'),
+    TRUST_PROXY: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
   })
   .transform((e) => ({
     ...e,

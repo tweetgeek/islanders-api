@@ -16,6 +16,7 @@ describe('health i swagger (e2e)', () => {
       .expect(200);
     expect(res.body.status).toBe('ok');
     expect(res.body.db).toBe('up');
+    expect(res.body.redis).toBe('up');
   });
 
   it('Swagger JSON dostępny przy SWAGGER_ENABLED=true', async () => {
