@@ -5,7 +5,13 @@ Status: zatwierdzony w brainstormingu, czeka na plan implementacji
 Poprzednik: `docs/superpowers/specs/2026-09-08-backend-foundation-geography-design.md` (spec A, wdrożony)
 Źródło decyzji: `docs/api-guidelines.md` sekcje 5-7, plus rozstrzygnięcia z tej sesji.
 
-Terminologia zgodna z `../islanders/CONTEXT.md`. Gdzie klient i ten spec się różnią, wygrywa klient.
+Terminologia zgodna z `../islanders/CONTEXT.md`, do którego ta sesja dopisała **Work Order**
+(zlecenie), **Build Queue** i **Training Queue** oraz rozszerzyła **Capacity** o przepadanie
+nadwyżki przy zwrocie. Gdzie klient i ten spec się różnią, wygrywa klient.
+
+Uwaga terminologiczna wynikająca z glosariusza: **zlecenie** to pozycja w kolejce osady,
+a **zadanie** to wpis w kolejce BullMQ. Glosariusz zakazuje `order` jako synonimu misji floty,
+dlatego pojęcie domenowe nazywa się Work Order, a nie po prostu Order.
 
 ## 1. Cel i zakres
 
@@ -38,6 +44,10 @@ osady domowej po jej utracie.
 | Skąd formuły balansu | Rodzina wykładnicza, stałe robocze | Kalibracja to osobny przebieg, nie część tego specu |
 | Anulowanie | Pełny zwrot, tylko dla nierozpoczętych | Koszt płacony przy zakolejkowaniu, migawka kosztu w wierszu zlecenia |
 | Zestaw wojska | Minimalny, dokładnie to co zna klient | Cztery typy, bez rozstrzygania różnic w walce |
+| Anulowanie w łańcuchu rozbudów | Tylko od końca, dla danego budynku | Łańcuch poziomów i kosztów nienaruszony (sekcja 6) |
+| Termin dla zleceń czekających | Podaje serwer, nie liczy klient | `finishAt` na każdym zleceniu (sekcja 7) |
+| Przemiatanie zaległości | Przy starcie oraz okresowo co minutę | Zgubione zadanie opóźnia o minutę, nie o tydzień |
+| Liczba instancji | Wiele od początku | Blokada doradcza, limity na Redisie, zaufanie do proxy (sekcja 10) |
 
 ## 3. Model danych
 
@@ -54,6 +64,7 @@ Klucz główny `id uuid`. Kolumny:
 | `kind` | `order_kind` | rozróżnik ładunku |
 | `position` | `integer` | miejsce w kolejce osady, w obrębie rodzaju |
 | `building_type` | `building_type` nullable | tylko dla `BUILD` |
+| `biome` | `biome_type` nullable | tylko dla `BUILD`; egzekwuje regułę biomu (niżej) |
 | `target_level` | `integer` nullable | tylko dla `BUILD` |
 | `military_type` | `military_type` nullable | tylko dla `RECRUIT` |
 | `count` | `integer` nullable | tylko dla `RECRUIT` |
@@ -63,8 +74,14 @@ Klucz główny `id uuid`. Kolumny:
 | `created_at` | `timestamptz` | |
 
 Ograniczenie `CHECK` wymusza, że dla `BUILD` wypełniony jest komplet budowlany, a militarny
-jest pusty, i odwrotnie. Baza pilnuje spójności ładunku, tak jak dziś pilnuje reguły
-„budynek zgodny z biomem" (ADR 0001).
+jest pusty, i odwrotnie.
+
+**Reguła biomu obowiązuje także zamiary, nie tylko fakty.** Zlecenie rozbudowy niesie kolumnę
+`biome` i tę samą parę kluczy obcych co tabela `buildings`: jeden do `settlements` po
+`(world_id, x, y, biome)`, żeby biom w wierszu zlecenia nie mógł kłamać, drugi do
+`biome_buildings` po `(biome, building_type)`, żeby typ budynku pasował do biomu. Bez tego
+zlecenie budowy tartaku na wyspie wulkanicznej weszłoby do bazy i odbiło się dopiero o kod
+aplikacji przy rozstrzyganiu — czyli w tym miejscu, któremu ADR 0001 wprost odmówił zaufania.
 
 Indeks na `(world_id, x, y, kind, position)` oraz częściowy na `resolved_at IS NULL`
 z `finish_at`, pod przemiatanie po restarcie.
@@ -207,13 +224,35 @@ natychmiast — to jest poprawne, a nie awaryjne.
 w poniedziałek zmienia stawkę, którą liczy się zasoby dla rekrutacji ukończonej we wtorek.
 Przemiatanie po restarcie idzie po `finish_at` rosnąco, nie po identyfikatorze.
 
-**Przemiatanie przy starcie** robi dwie rzeczy: rozstrzyga po kolei wszystko z terminem
-w przeszłości i pustym `resolved_at`, a potem planuje na nowo zadania dla zleceń rozpoczętych
-z terminem w przyszłości — Redis mógł zostać wyczyszczony, baza nie.
+**Przemiatanie** robi dwie rzeczy: rozstrzyga po kolei wszystko z terminem w przeszłości
+i pustym `resolved_at`, a potem planuje na nowo zadania dla zleceń rozpoczętych z terminem
+w przyszłości — Redis mógł zostać wyczyszczony, baza nie.
+
+Biegnie **przy starcie oraz okresowo, co minutę**. Samo przemiatanie startowe chroni przed
+restartem, ale nie przed zgubieniem pojedynczego zadania przy działającej aplikacji — a wtedy
+kolejka gracza stałaby do najbliższego wdrożenia, bez żadnego sygnału. Zapytanie idzie po
+indeksie częściowym i zwykle nie zwraca nic, więc koszt cyklu jest znikomy. Częstotliwość
+jest wartością konfigurowalną.
+
+**Planowanie zadania jest idempotentne**, bo identyfikatorem zadania w BullMQ jest identyfikator
+zlecenia. Powtórne zaplanowanie tego samego zlecenia — przez przemiatanie na kilku instancjach
+albo przez restart — nie tworzy drugiego zadania.
 
 **Anulowanie.** Usunięcie zlecenia nierozpoczętego materializuje zasoby, dopisuje zwrot
-obcięty do pojemności magazynu (nadwyżka przepada, zgodnie ze słownikiem) i przesuwa pozycje
-dalszych zleceń o jeden w dół, w tej samej transakcji. Zlecenie rozpoczęte odpowiada 409.
+obcięty do pojemności magazynu i przesuwa pozycje dalszych zleceń o jeden w dół, w tej samej
+transakcji. Zlecenie rozpoczęte odpowiada 409.
+
+**Anulowanie rozbudowy wyłącznie od końca łańcucha.** Zlecenie `BUILD` da się anulować tylko
+wtedy, gdy nie istnieje późniejsze nierozstrzygnięte zlecenie dla **tego samego budynku**;
+w przeciwnym razie 409. Powód jest konkretny: poziom docelowy zamraża się przy zakolejkowaniu,
+więc anulowanie zlecenia celującego w poziom drugi zostawiłoby w kolejce zlecenie celujące
+w trzeci przy budynku stojącym na pierwszym, a budynek przeskoczyłby poziom. Zlecenia `RECRUIT`
+można anulować dowolnie, bo partie wojska są od siebie niezależne.
+
+**Zwrot obcięty do pojemności, ale nie po cichu.** Nadwyżka przepada, zgodnie z rozszerzoną
+definicją pojemności w słowniku, a odpowiedź na anulowanie niesie pole mówiące, ile każdego
+surowca przepadło. Scenariusz jest realny: gracz z pełnym magazynem anuluje zlecenie i bez tej
+informacji zobaczyłby wyłącznie to, że zwrot się nie pojawił.
 
 **Poziom docelowy liczy się przy zakolejkowaniu**, jako bieżący poziom budynku powiększony
 o liczbę nierozstrzygniętych zleceń dla tego samego budynku. Dzięki temu dwie rozbudowy
@@ -244,7 +283,15 @@ i migotać interfejsem.
 **Widok własnej osady rośnie o trzy pola:**
 
 - `garrison` — słownik czterech typów wojska.
-- `orders` — tablica zleceń: identyfikator, rodzaj, pozycja, `startedAt`, `finishAt`, ładunek.
+- `orders` — tablica **nierozstrzygniętych** zleceń: identyfikator, rodzaj, pozycja,
+  `startedAt`, `finishAt`, ładunek. `startedAt` jest niepuste wyłącznie dla czoła kolejki,
+  natomiast `finishAt` niesie **każde** zlecenie: dla czoła faktyczny, dla czekających
+  przewidywany, policzony jako termin poprzednika plus czas trwania. Klient rysuje listę bez
+  arytmetyki — tej samej zasady wytyczne żądają dla produkcji i pojemności.
+
+  Przewidywany termin jest wiarygodny, a nie orientacyjny, i wynika to z decyzji z sekcji 6:
+  następne zlecenie startuje od `finish_at` poprzednika, nie od chwili obudzenia workera, więc
+  opóźnienie workera nie przesuwa łańcucha.
 - `buildingUpgrades` — słownik dla sześciu slotów: poziom docelowy, koszt w pięciu zasobach,
   czas w sekundach.
 
@@ -270,7 +317,37 @@ Bez tej listy spec jest w połowie martwy.
 5. Podpiąć trzy nowe trasy w `HttpProvider` i odwzorować je w `MockProvider`, żeby klient
    dało się rozwijać bez serwera.
 
-## 9. Testy
+## 10. Praca wielo-instancyjna
+
+Zakładamy **wiele instancji aplikacji od początku**, za rozdzielaczem obciążenia. To przenosi
+do tego specu trzy pozycje, które spec A odnotował jako przedprodukcyjne, i przenosi je tutaj
+dlatego, że wszystkie trzy są tanie wtedy, gdy Redis i tak wchodzi.
+
+**Blokada na przemiataniu.** Dziesięć replik budzących się co minutę biłoby się o te same
+wiersze. Cykl przemiatania obejmuje blokada doradcza Postgresa na stałym kluczu, próbowana
+bez czekania: replika, która jej nie dostanie, pomija swój cykl. Wybieram blokadę w bazie,
+a nie w Redisie, bo baza jest już źródłem prawdy dla zleceń, więc nie dokłada to nowego
+miejsca, w którym stan może się rozjechać z rzeczywistością.
+
+**Worker biegnie na każdej instancji.** To jest pożądane, nie tolerowane: BullMQ wyda każde
+zadanie dokładnie jednemu odbiorcy, więc repliki dzielą się pracą, a idempotencja po
+`resolved_at` chroni przed wydaniem podwójnym. Zmienna środowiskowa pozwala workera wyłączyć,
+gdyby kiedyś wydzielić go do osobnego artefaktu.
+
+**Limity zapytań przenoszą się do Redisa.** Dzisiejszy `RateLimitGuard` liczy w mapie w pamięci
+procesu, więc przy dziesięciu replikach daje graczowi dziesięciokrotny limit — czyli nie działa.
+Zastępuje go licznik w Redisie w tym samym oknie stałym, z tymi samymi kluczami (gracz dla tras
+uwierzytelnionych, adres i trasa dla tras uwierzytelniania) i tymi samymi zmiennymi
+konfiguracyjnymi. Zachowanie widoczne przez API nie zmienia się o ani jeden kod odpowiedzi.
+
+**Zaufanie do proxy przestaje być pozycją odłożoną.** Za rozdzielaczem obciążenia wszystkie
+żądania mają adres rozdzielacza, więc limit po adresie staje się limitem globalnym dla
+wszystkich graczy naraz. Aplikacja ustawia zaufanie do proxy na podstawie zmiennej
+środowiskowej, domyślnie wyłączone, żeby uruchomienie lokalne zachowywało się jak dziś.
+Ostrzeżenie, które spec A zostawił w kodzie strażnika, zostaje zastąpione działającą
+konfiguracją.
+
+## 11. Testy
 
 **Rozdzielenie wynikające z testowalności.** Rozstrzyganie zlecenia jest serwisem
 przyjmującym identyfikator i zegar; worker BullMQ to cienka przejściówka. Testy integracyjne
@@ -298,15 +375,22 @@ arytmetyka pozycji po anulowaniu.
 - Dwa równoległe zamówienia na tę samą osadę serializują się.
 
 **End to end przez HTTP:** rozbudowa zwraca pełny widok z nową kolejką; brak zasobów daje 409
-z niedoborem; anulowanie nierozpoczętego zwraca koszt, rozpoczętego odmawia; przekroczenie
-limitu kolejki odmawia; limit populacji liczy także zlecenia czekające; świat `ENDED` odmawia
-zapisu; cudza osada jest nietykalna.
+z niedoborem; anulowanie nierozpoczętego zwraca koszt, rozpoczętego odmawia; anulowanie
+rozbudowy mającej za sobą późniejsze zlecenie dla tego samego budynku odmawia; anulowanie przy
+pełnym magazynie zwraca informację o przepadłej nadwyżce; przekroczenie limitu kolejki odmawia;
+limit populacji liczy także zlecenia czekające; świat `ENDED` odmawia zapisu; cudza osada jest
+nietykalna; przewidywane terminy zleceń czekających zgadzają się z faktycznymi po rozstrzygnięciu
+poprzedników.
+
+**Na bazie, bez HTTP, dla reguły biomu i wielu instancji:** wstawienie zlecenia rozbudowy
+tartaku na osadzie wulkanicznej wprost SQL-em odbija się o klucz obcy; dwa równoległe cykle
+przemiatania powodują, że tylko jeden wykonuje pracę, a drugi pomija cykl bez błędu.
 
 **Standard dowodu.** Projekt wyrobił w specu A zwyczaj weryfikacji mutacyjnej dla testów
 nośnych i ten spec go utrzymuje: test naliczania odcinkowego, test kolejności przemiatania
 i test idempotencji mają zostać sprawdzone przez celowe zepsucie kodu i potwierdzenie porażki.
 
-## 10. Kolejność prac
+## 12. Kolejność prac
 
 1. Migracje: dwa enumy, `settlement_orders`, `garrisons`, usunięcie `settlements.population`.
 2. Balans: formuły kosztu, czasu, miejsc w populacji; czyste funkcje wydawania zasobów.
