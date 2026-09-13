@@ -1,5 +1,6 @@
 export * from './config/config.module.js';
 export * from './config/env.js';
+export * from './db/advisory-lock.js';
 export * from './db/db.module.js';
 export * from './db/migrate.js';
 export * from './db/pg-errors.js';

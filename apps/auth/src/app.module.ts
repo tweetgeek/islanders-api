@@ -13,6 +13,7 @@ import type { AuthEnv } from './config/env.js';
 import { AuthDbModule } from './db/db.js';
 import { EventsModule } from './events/events.module.js';
 import { PlayersModule } from './players/players.module.js';
+import { ProbeModule } from './probe/probe.module.js';
 import { ServiceClientsModule } from './service-clients/service-clients.module.js';
 import { TokensModule } from './tokens/tokens.module.js';
 import { WorldsModule } from './worlds/worlds.module.js';
@@ -34,6 +35,7 @@ export class AppModule {
         ServiceClientsModule,
         WorldsModule,
         EventsModule,
+        ProbeModule,
       ],
       providers: [
         { provide: APP_INTERCEPTOR, useClass: ServerTimeInterceptor },
