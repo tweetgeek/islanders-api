@@ -240,9 +240,10 @@ Konfiguracja walidowana zod przy starcie.
   `SERVICE_CLIENTS` (identyfikatory, skróty sekretów, slug świata), `TRUST_PROXY`.
 - **tools:** `AUTH_INTERNAL_URL`, `AUTH_PUBLIC_URL`.
 
-Lokalnie `docker-compose.yml` stawia jeden Postgres z osobnymi bazami dla auth i każdego
-świata, jeden Redis z osobnymi numerami baz, oraz auth i `core-world-1` na portach hosta
-(auth `3000` publiczny i `3001` wewnętrzny, core `3100` publiczny i `3101` wewnętrzny).
+Lokalnie `docker-compose.yml` stawia infrastrukturę: jeden Postgres z osobnymi bazami dla auth
+i każdego świata (`docker/postgres-init.sql`) oraz Redis. Aplikacje uruchamia się z npm:
+auth na `3000` (publiczny) i `3001` (wewnętrzny), core na `3100` (publiczny) i od etapu 2
+na `3101` (wewnętrzny). Obrazy kontenerów aplikacji dochodzą razem z wdrożeniem.
 
 ## 10. Testy
 
