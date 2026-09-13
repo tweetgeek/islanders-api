@@ -21,5 +21,8 @@ export async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T
     ]);
   } finally {
     clearTimeout(timer);
+    // Przegrana obietnica (oryginalne polecenie Redisa) żyje dalej w tle — bez tego jej
+    // spóźnione odrzucenie, gdy w końcu przyjdzie, ujawnia się jako unhandled rejection.
+    promise.catch(() => {});
   }
 }

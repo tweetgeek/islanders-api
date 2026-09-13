@@ -34,6 +34,13 @@ export class RateLimiter {
   ): Promise<RateLimitDecision> {
     const now = this.clock.now().getTime();
     const key = windowKey(this.env.RATE_LIMIT_PREFIX, bucket, subject, now, windowMs);
+    // Klient poza stanem `ready` (rozłączony, łączy się ponownie) i tak nie wykona polecenia od
+    // ręki — z `maxRetriesPerRequest: null` trafiłoby ono do kolejki offline ioredis i czekało
+    // tam bezterminowo. Sprawdzamy status PRZED wysłaniem, żeby nic tam nie utknęło.
+    if (this.redis.status !== 'ready') {
+      this.logger.warn(`Limiter pominięty, Redis niedostępny (status: ${this.redis.status})`);
+      return { allowed: true };
+    }
     let count: number;
     try {
       const results = await withTimeout(
