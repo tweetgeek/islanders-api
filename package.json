@@ -2,7 +2,7 @@
   "name": "islanders-backend",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/domain", "packages/contracts", "packages/platform", "apps/core"],
+  "workspaces": ["packages/domain", "packages/contracts", "packages/platform", "apps/core", "apps/auth"],
   "scripts": {
     "build:packages": "npm run build -w packages/domain -w packages/contracts -w packages/platform",
     "build": "npm run build --workspaces --if-present",
