@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
-import type { Clock } from '../../domain/time/index.js';
+import type { Clock } from '@islanders/domain/time';
 
 /**
  * Nagłówek na KAŻDEJ odpowiedzi, także 401 ze strażnika i 404 bez trasy — interceptory tam nie docierają,

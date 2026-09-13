@@ -1,7 +1,7 @@
 import { ConflictException } from '@nestjs/common';
-import { STARTER_PACK, startingBuildings } from '../../domain/balance/index.js';
+import { STARTER_PACK, startingBuildings } from '@islanders/domain/balance';
 import { islandAt } from '../../domain/geography/index.js';
-import type { Clock } from '../../domain/time/index.js';
+import type { Clock } from '@islanders/domain/time';
 import type { Db } from '../../infra/db/db.module.js';
 import type { SettlementRecord } from '../settlements/settlement-views.js';
 import type { SettlementsRepository } from '../settlements/settlements.repository.js';

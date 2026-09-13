@@ -1,4 +1,4 @@
-import { BIOMES, BUILDINGS } from '../../../domain/rules/index.js';
+import { BIOMES, BUILDINGS } from '@islanders/domain/rules';
 import { biomeType, buildingType, missionType, worldStatus } from './enums.js';
 
 describe('enumy Postgresa odpowiadają regułom domenowym', () => {

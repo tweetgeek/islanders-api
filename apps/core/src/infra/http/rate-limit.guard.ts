@@ -8,7 +8,7 @@ import {
   SetMetadata,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import type { Clock } from '../../domain/time/index.js';
+import type { Clock } from '@islanders/domain/time';
 import { ENV } from '../config/config.module.js';
 import type { Env } from '../config/env.js';
 import { CLOCK } from '../time/time.module.js';

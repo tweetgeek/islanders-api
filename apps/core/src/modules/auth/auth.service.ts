@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import argon2 from 'argon2';
-import type { Clock } from '../../domain/time/index.js';
+import type { Clock } from '@islanders/domain/time';
 import { ENV } from '../../infra/config/config.module.js';
 import type { Env } from '../../infra/config/env.js';
 import { isUniqueViolation } from '../../infra/db/pg-errors.js';

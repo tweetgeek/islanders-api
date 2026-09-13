@@ -1,9 +1,9 @@
 import { INestApplication } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 import request from 'supertest';
-import { startingBuildings } from '../src/domain/balance/index.js';
+import { startingBuildings } from '@islanders/domain/balance';
 import { islandAt } from '../src/domain/geography/index.js';
-import { FixedClock } from '../src/domain/time/index.js';
+import { FixedClock } from '@islanders/domain/time';
 import { DB, type Db } from '../src/infra/db/db.module.js';
 import { buildings } from '../src/infra/db/schema/index.js';
 import {

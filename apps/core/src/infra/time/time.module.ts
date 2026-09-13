@@ -1,5 +1,5 @@
 import { Global, Module } from '@nestjs/common';
-import { systemClock } from '../../domain/time/index.js';
+import { systemClock } from '@islanders/domain/time';
 
 export const CLOCK = Symbol('CLOCK');
 

@@ -1,6 +1,6 @@
 import { ExecutionContext, HttpException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { FixedClock } from '../../domain/time/index.js';
+import { FixedClock } from '@islanders/domain/time';
 import type { Env } from '../config/env.js';
 import {
   RATE_LIMIT,

@@ -1,0 +1,20 @@
+{
+  "name": "@islanders/domain",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./rules": { "types": "./dist/rules/index.d.ts", "default": "./dist/rules/index.js" },
+    "./balance": { "types": "./dist/balance/index.d.ts", "default": "./dist/balance/index.js" },
+    "./economy": { "types": "./dist/economy/index.d.ts", "default": "./dist/economy/index.js" },
+    "./time": { "types": "./dist/time/index.d.ts", "default": "./dist/time/index.js" }
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.2"
+  }
+}

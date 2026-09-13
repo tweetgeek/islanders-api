@@ -5,8 +5,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { STARTER_PACK, startingBuildings } from '../../domain/balance/index.js';
-import type { Clock } from '../../domain/time/index.js';
+import { STARTER_PACK, startingBuildings } from '@islanders/domain/balance';
+import type { Clock } from '@islanders/domain/time';
 import { DB, type Db } from '../../infra/db/db.module.js';
 import { isUniqueViolation } from '../../infra/db/pg-errors.js';
 import { CLOCK } from '../../infra/time/time.module.js';

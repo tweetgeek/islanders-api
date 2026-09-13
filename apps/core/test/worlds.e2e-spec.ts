@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import request from 'supertest';
-import { FixedClock } from '../src/domain/time/index.js';
+import { FixedClock } from '@islanders/domain/time';
 import { islandAt } from '../src/domain/geography/index.js';
 import { ProfilesRepository } from '../src/modules/worlds/profiles.repository.js';
 import { DB, type Db } from '../src/infra/db/db.module.js';

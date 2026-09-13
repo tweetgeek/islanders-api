@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { Clock } from '../../domain/time/index.js';
+import type { Clock } from '@islanders/domain/time';
 import { CLOCK } from '../../infra/time/time.module.js';
 import type { WorldRow } from '../worlds/worlds.repository.js';
 import { parseBbox } from './bbox.js';

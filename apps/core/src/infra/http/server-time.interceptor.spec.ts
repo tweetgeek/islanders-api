@@ -1,6 +1,6 @@
 import { CallHandler, ExecutionContext } from '@nestjs/common';
 import { lastValueFrom, of } from 'rxjs';
-import { FixedClock } from '../../domain/time/index.js';
+import { FixedClock } from '@islanders/domain/time';
 import { ServerTimeInterceptor } from './server-time.interceptor.js';
 
 import { serverTimeMiddleware } from './server-time.middleware.js';

@@ -2,14 +2,14 @@ import {
   capacityFor,
   populationMaxFor,
   productionPerHour,
-} from '../../domain/balance/index.js';
-import { currentResources } from '../../domain/economy/index.js';
+} from '@islanders/domain/balance';
+import { currentResources } from '@islanders/domain/economy';
 import {
   type Biome,
   type BuildingLevels,
   type Resources,
   slotsFor,
-} from '../../domain/rules/index.js';
+} from '@islanders/domain/rules';
 
 export interface SettlementRecord {
   worldId: number;

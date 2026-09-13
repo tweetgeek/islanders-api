@@ -1,10 +1,7 @@
-import { RESOURCE_ORDER } from '../geography/constants.js';
-import { BIOME_RESOURCES } from '../geography/island.js';
 import {
   BIOMES,
   BUILDINGS,
   COMMON_BUILDINGS,
-  RESOURCES,
   biomeResources,
   buildingExtracts,
   emptyResources,
@@ -13,10 +10,6 @@ import {
 } from './index.js';
 
 describe('reguły domenowe (CONTEXT.md, ADR 0002)', () => {
-  it('RESOURCES ma kolejność kontraktu geografii', () => {
-    expect([...RESOURCES]).toEqual([...RESOURCE_ORDER]);
-  });
-
   it('każdy biom produkuje dokładnie dwa zasoby i dopuszcza dokładnie dwa budynki wydobywcze', () => {
     for (const b of BIOMES) {
       expect(biomeResources(b)).toHaveLength(2);
@@ -61,13 +54,5 @@ describe('reguły domenowe (CONTEXT.md, ADR 0002)', () => {
       iron: 0,
       sulfur: 0,
     });
-  });
-
-  it('geografia i reguły opisują ten sam podział zasobów między biomy', () => {
-    for (const b of BIOMES) {
-      expect([...biomeResources(b)].sort()).toEqual(
-        [...BIOME_RESOURCES[b]].sort(),
-      );
-    }
   });
 });

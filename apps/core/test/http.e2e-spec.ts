@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { FixedClock } from '../src/domain/time/index.js';
+import { FixedClock } from '@islanders/domain/time';
 import {
   bearer,
   createWorld,

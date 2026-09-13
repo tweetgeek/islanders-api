@@ -6,7 +6,7 @@ import {
   NestInterceptor,
 } from '@nestjs/common';
 import { Observable, map } from 'rxjs';
-import type { Clock } from '../../domain/time/index.js';
+import type { Clock } from '@islanders/domain/time';
 import { CLOCK } from '../time/time.module.js';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

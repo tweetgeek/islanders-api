@@ -1,5 +1,5 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
-import type { Clock } from '../../domain/time/index.js';
+import type { Clock } from '@islanders/domain/time';
 import type { Env } from '../config/env.js';
 import { setupSwagger } from '../swagger/setup-swagger.js';
 import { CLOCK } from '../time/time.module.js';

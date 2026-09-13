@@ -4,7 +4,7 @@ import { inject } from 'vitest';
 import { AppModule } from '../../src/app.module.js';
 import { parseEnv } from '../../src/infra/config/env.js';
 import { configureApp } from '../../src/infra/http/configure-app.js';
-import type { Clock } from '../../src/domain/time/index.js';
+import type { Clock } from '@islanders/domain/time';
 import { CLOCK } from '../../src/infra/time/time.module.js';
 
 export type TestEnvOverrides = Partial<Record<string, string>>;

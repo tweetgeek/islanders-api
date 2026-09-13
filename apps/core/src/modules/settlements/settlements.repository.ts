@@ -5,7 +5,7 @@ import type {
   Building,
   BuildingLevels,
   Resources,
-} from '../../domain/rules/index.js';
+} from '@islanders/domain/rules';
 import { DB, type Db, type DbClient } from '../../infra/db/db.module.js';
 import {
   buildings,
