@@ -40,7 +40,7 @@ interface ParityFile {
   worlds: { seed: number; cells: ParityCell[] }[];
 }
 
-const clientDir = process.env.ISLANDERS_CLIENT_DIR ?? '../islanders';
+const clientDir = process.env.ISLANDERS_CLIENT_DIR ?? '../../../islanders';
 const parityPath = path.resolve(
   process.cwd(),
   clientDir,

@@ -35,7 +35,7 @@ export const envSchema = z
     JWT_SECRET: z.string().min(32, 'co najmniej 32 znaki'),
     JWT_ACCESS_TTL: duration.default('15m').transform(durationToSeconds),
     JWT_REFRESH_TTL: duration.default('30d').transform(durationToSeconds),
-    ISLANDERS_CLIENT_DIR: z.string().default('../islanders'),
+    ISLANDERS_CLIENT_DIR: z.string().default('../../../islanders'),
     SWAGGER_ENABLED: z.enum(['true', 'false']).optional(),
     RATE_LIMIT_AUTH_PER_MINUTE: z.coerce.number().int().min(1).default(10),
     RATE_LIMIT_PLAYER_PER_MINUTE: z.coerce.number().int().min(1).default(120),

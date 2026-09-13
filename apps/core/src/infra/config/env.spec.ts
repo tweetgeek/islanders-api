@@ -13,7 +13,7 @@ describe('parseEnv', () => {
     expect(env.JWT_ACCESS_TTL).toBe(15 * 60);
     expect(env.JWT_REFRESH_TTL).toBe(30 * 24 * 3600);
     expect(env.REDIS_URL).toBe('redis://localhost:6379');
-    expect(env.ISLANDERS_CLIENT_DIR).toBe('../islanders');
+    expect(env.ISLANDERS_CLIENT_DIR).toBe('../../../islanders');
     expect(env.RATE_LIMIT_AUTH_PER_MINUTE).toBe(10);
     expect(env.RATE_LIMIT_PLAYER_PER_MINUTE).toBe(120);
   });
