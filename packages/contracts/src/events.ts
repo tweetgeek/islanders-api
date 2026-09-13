@@ -7,7 +7,7 @@ export const MAX_EVENT_BATCH = 100;
 const eventBase = {
   eventId: z.uuid(),
   worldSlug: worldSlugSchema,
-  occurredAt: z.string().datetime(),
+  occurredAt: z.iso.datetime(),
 };
 
 export const worldStatusChangedSchema = z.object({
@@ -20,7 +20,7 @@ export const playerJoinedWorldSchema = z.object({
   ...eventBase,
   type: z.literal('PlayerJoinedWorld'),
   playerId: z.uuid(),
-  joinedAt: z.string().datetime(),
+  joinedAt: z.iso.datetime(),
 });
 
 export const worldEventSchema = z.discriminatedUnion('type', [
