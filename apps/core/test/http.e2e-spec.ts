@@ -20,7 +20,7 @@ describe('warstwa HTTP (e2e)', () => {
       clock,
       env: {
         RATE_LIMIT_AUTH_PER_MINUTE: '10',
-        RATE_LIMIT_PLAYER_PER_MINUTE: '5',
+        RATE_LIMIT_SUBJECT_PER_MINUTE: '5',
       },
     });
   });
@@ -67,6 +67,7 @@ describe('warstwa HTTP (e2e)', () => {
       .send({ email: p.email, password: p.password })
       .expect(429);
     expect(limited.body.message).toMatch(/Za dużo żądań/);
+    expect(limited.headers['retry-after']).toBeDefined();
     clock.advance(60_001);
     try {
       await http()
@@ -107,5 +108,53 @@ describe('warstwa HTTP (e2e)', () => {
       .get('/api/v1/worlds')
       .set('Authorization', bearer(b.accessToken))
       .expect(200);
+  });
+
+  it('zalew złymi tokenami zużywa sufit po adresie, zanim zadziała strażnik JWT', async () => {
+    const floodApp = await createTestApp({ env: { RATE_LIMIT_IP_PER_MINUTE: '3' } });
+    try {
+      const flood = () =>
+        request(floodApp.getHttpServer())
+          .get('/api/v1/worlds')
+          .set('Authorization', 'Bearer zly.token.jwt');
+      for (let i = 0; i < 3; i++) await flood().expect(401);
+      const limited = await flood().expect(429);
+      expect(limited.headers['retry-after']).toBeDefined();
+    } finally {
+      await floodApp.close();
+    }
+  });
+
+  it('dwie instancje na tym samym Redisie i prefiksie dzielą kubełek', async () => {
+    const shared = { RATE_LIMIT_AUTH_PER_MINUTE: '2', RATE_LIMIT_PREFIX: `rl-shared-${Date.now()}` };
+    const one = await createTestApp({ env: shared });
+    const two = await createTestApp({ env: shared });
+    try {
+      const body = { email: 'nikt@test.local', password: 'zle-haslo' };
+      await request(one.getHttpServer()).post('/api/v1/auth/login').send(body).expect(401);
+      await request(two.getHttpServer()).post('/api/v1/auth/login').send(body).expect(401);
+      await request(one.getHttpServer()).post('/api/v1/auth/login').send(body).expect(429);
+    } finally {
+      await one.close();
+      await two.close();
+    }
+  });
+
+  it('TRUST_PROXY=1: różne X-Forwarded-For to różne kubełki po adresie', async () => {
+    const proxied = await createTestApp({
+      env: { RATE_LIMIT_AUTH_PER_MINUTE: '1', TRUST_PROXY: '1' },
+    });
+    try {
+      const login = (ip: string) =>
+        request(proxied.getHttpServer())
+          .post('/api/v1/auth/login')
+          .set('X-Forwarded-For', ip)
+          .send({ email: 'nikt@test.local', password: 'zle-haslo' });
+      await login('203.0.113.1').expect(401);
+      await login('203.0.113.1').expect(429);
+      await login('203.0.113.2').expect(401);
+    } finally {
+      await proxied.close();
+    }
   });
 });

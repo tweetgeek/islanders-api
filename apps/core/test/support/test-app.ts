@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { inject } from 'vitest';
@@ -47,6 +48,10 @@ export async function createTestApp(
     JWT_REFRESH_TTL: '30d',
     // Testy rejestrują dziesiątki kont z jednego IP; limit produkcyjny (10) sprawdza osobno http.e2e-spec.ts
     RATE_LIMIT_AUTH_PER_MINUTE: '100000',
+    RATE_LIMIT_IP_PER_MINUTE: '100000',
+    // Kontener Redisa jest wspólny dla całego przebiegu; osobny prefiks na aplikację,
+    // żeby kubełki jednego pliku testów nie przeciekały do następnego.
+    RATE_LIMIT_PREFIX: `rl-test-${randomUUID()}`,
     REDIS_URL: inject('redisUrl'),
     // Worker wyłączony domyślnie: testy integracyjne wołają serwis rozstrzygania wprost,
     // a pojedynczy test e2e włącza go jawnie, żeby udowodnić, że przejściówka jest podpięta.

@@ -15,7 +15,9 @@ describe('parseEnv', () => {
     expect(env.REDIS_URL).toBe('redis://localhost:6379');
     expect(env.ISLANDERS_CLIENT_DIR).toBe('../../../islanders');
     expect(env.RATE_LIMIT_AUTH_PER_MINUTE).toBe(10);
-    expect(env.RATE_LIMIT_PLAYER_PER_MINUTE).toBe(120);
+    expect(env.RATE_LIMIT_SUBJECT_PER_MINUTE).toBe(120);
+    expect(env.RATE_LIMIT_IP_PER_MINUTE).toBe(600);
+    expect(env.TRUST_PROXY).toBe(false);
   });
 
   it('Swagger domyślnie włączony poza produkcją i wyłączony w produkcji', () => {

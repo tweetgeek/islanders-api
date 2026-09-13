@@ -11,6 +11,7 @@ import { IS_PUBLIC } from './public.decorator.js';
 
 export interface AuthenticatedRequest extends Request {
   playerId: number;
+  rateLimitSubject?: string;
 }
 
 @Injectable()
@@ -46,6 +47,7 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Token nieważny lub wygasły');
     }
     req.playerId = playerId;
+    req.rateLimitSubject = String(playerId);
     return true;
   }
 }

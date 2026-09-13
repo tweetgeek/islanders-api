@@ -15,6 +15,18 @@ export const durationSchema = z
   .string()
   .regex(/^\d+[smhd]$/, 'użyj formatu 15m, 12h albo 30d');
 
+/** Wartość dla `app.set('trust proxy', …)`: false, true, liczba przeskoków albo lista podsieci. */
+export function parseTrustProxy(value: string): boolean | number | string {
+  if (value === 'false') return false;
+  if (value === 'true') return true;
+  if (/^\d+$/.test(value)) return Number(value);
+  return value
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join(',');
+}
+
 /** Zmienne wspólne dla wszystkich aplikacji; aplikacja rozszerza kształt własnymi polami. */
 export const baseEnvShape = {
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -25,11 +37,10 @@ export const baseEnvShape = {
   REDIS_URL: z.string().default('redis://localhost:6379'),
   SWAGGER_ENABLED: z.enum(['true', 'false']).optional(),
   RATE_LIMIT_AUTH_PER_MINUTE: z.coerce.number().int().min(1).default(10),
-  RATE_LIMIT_PLAYER_PER_MINUTE: z.coerce.number().int().min(1).default(120),
-  TRUST_PROXY: z
-    .enum(['true', 'false'])
-    .default('false')
-    .transform((v) => v === 'true'),
+  RATE_LIMIT_SUBJECT_PER_MINUTE: z.coerce.number().int().min(1).default(120),
+  RATE_LIMIT_IP_PER_MINUTE: z.coerce.number().int().min(1).default(600),
+  RATE_LIMIT_PREFIX: z.string().min(1).default('rl'),
+  TRUST_PROXY: z.string().default('false').transform(parseTrustProxy),
 };
 
 /** Swagger domyślnie włączony poza produkcją; jawna wartość zawsze wygrywa. */

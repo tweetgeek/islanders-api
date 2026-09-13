@@ -1,4 +1,5 @@
 import { DynamicModule, Module } from '@nestjs/common';
+import { RateLimitModule } from '@islanders/platform';
 import { AppConfigModule } from './infra/config/config.module.js';
 import type { Env } from './infra/config/env.js';
 import { DbModule } from './infra/db/db.module.js';
@@ -22,6 +23,7 @@ export class AppModule {
         AppConfigModule.forRoot(env),
         DbModule,
         RedisModule,
+        RateLimitModule,
         TimeModule,
         HealthModule,
         AuthModule,
@@ -30,7 +32,7 @@ export class AppModule {
         SettlementsModule,
         FleetsModule,
         // Na końcu: globalne strażniki działają w kolejności rejestracji, więc RateLimitGuard
-        // musi wystartować po JwtAuthGuard, żeby widzieć ustawione przez niego `req.playerId`.
+        // musi wystartować po JwtAuthGuard, żeby widzieć ustawione przez niego `req.rateLimitSubject`.
         HttpModule,
       ],
     };
