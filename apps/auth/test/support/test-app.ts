@@ -10,6 +10,7 @@ import { AppModule } from '../../src/app.module.js';
 import { configureAuthApp } from '../../src/bootstrap.js';
 import { parseAuthEnv } from '../../src/config/env.js';
 import { keysEnv, testSigningKeys } from './keys.js';
+import { serviceClientsEnv } from './service-clients.js';
 
 export interface CreateTestAppOptions {
   env?: Partial<Record<string, string>>;
@@ -34,7 +35,7 @@ export async function createTestApp(options: CreateTestAppOptions = {}): Promise
     REDIS_URL: inject('redisUrl'),
     AUTH_ISSUER: 'https://users.islanders.test',
     JWT_SIGNING_KEYS: keysEnv(testSigningKeys.active),
-    SERVICE_CLIENTS: '[]',
+    SERVICE_CLIENTS: serviceClientsEnv(),
     RATE_LIMIT_AUTH_PER_MINUTE: '100000',
     RATE_LIMIT_IP_PER_MINUTE: '100000',
     RATE_LIMIT_PREFIX: `rl-test-${randomUUID()}`,

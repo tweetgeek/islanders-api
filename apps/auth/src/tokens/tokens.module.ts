@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { ENV } from '@islanders/platform';
 import type { AuthEnv } from '../config/env.js';
 import { SIGNING_KEYS, loadSigningKeys } from '../keys/signing-keys.js';
+import { AccessTokenGuard, ServiceTokenGuard } from './guards.js';
 import { JwksController } from './jwks.controller.js';
 import { TokenIssuer } from './token-issuer.js';
 import { TokenVerifier } from './token-verifier.js';
@@ -17,7 +18,9 @@ import { TokenVerifier } from './token-verifier.js';
     },
     TokenIssuer,
     TokenVerifier,
+    AccessTokenGuard,
+    ServiceTokenGuard,
   ],
-  exports: [SIGNING_KEYS, TokenIssuer, TokenVerifier],
+  exports: [SIGNING_KEYS, TokenIssuer, TokenVerifier, AccessTokenGuard, ServiceTokenGuard],
 })
 export class TokensModule {}

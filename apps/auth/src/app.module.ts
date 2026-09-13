@@ -12,7 +12,9 @@ import {
 import type { AuthEnv } from './config/env.js';
 import { AuthDbModule } from './db/db.js';
 import { PlayersModule } from './players/players.module.js';
+import { ServiceClientsModule } from './service-clients/service-clients.module.js';
 import { TokensModule } from './tokens/tokens.module.js';
+import { WorldsModule } from './worlds/worlds.module.js';
 
 @Module({})
 export class AppModule {
@@ -28,6 +30,8 @@ export class AppModule {
         HealthModule,
         TokensModule,
         PlayersModule,
+        ServiceClientsModule,
+        WorldsModule,
       ],
       providers: [
         { provide: APP_INTERCEPTOR, useClass: ServerTimeInterceptor },
