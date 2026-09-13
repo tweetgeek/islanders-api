@@ -2193,7 +2193,7 @@ export const authEnvSchema = z
     JWT_SIGNING_KEYS: jsonArray,
     JWT_ACCESS_TTL: durationSchema.default('15m').transform(durationToSeconds),
     JWT_REFRESH_TTL: durationSchema.default('30d').transform(durationToSeconds),
-    SERVICE_CLIENTS: jsonArray.default([]),
+    SERVICE_CLIENTS: z.string().default('[]').pipe(jsonArray),
     WORLD_PROBE_INTERVAL: durationSchema.default('30s').transform(durationToSeconds),
   })
   .transform(withSwaggerDefault);
@@ -2204,8 +2204,6 @@ export function parseAuthEnv(raw: Record<string, string | undefined>): AuthEnv {
   return parseEnvWith(authEnvSchema, raw);
 }
 ```
-Uwaga: `SERVICE_CLIENTS: jsonArray.default([])` — w zod 4 `.default` na schemacie z transformacją przyjmuje wartość wyjściową; jeśli kompilator zgłosi błąd typu, użyj `z.string().default('[]').pipe(jsonArray)`.
-
 Run: `npm run test -w apps/auth`
 Expected: PASS.
 
