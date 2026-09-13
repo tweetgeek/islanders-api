@@ -79,7 +79,7 @@ Podpis asymetryczny (EdDSA), `kid` w nagłówku, klucze publiczne pod
 
 | `aud` | Kto dostaje | Kto akceptuje | Claimy |
 |---|---|---|---|
-| `islanders-worlds` | gracz po zalogowaniu | publiczne API core | `sub` (accountId, uuid), `roles`, `nickname` |
+| `islanders-worlds` | gracz po zalogowaniu | publiczne API core | `sub` (playerId, uuid), `roles`, `nickname` |
 | `islanders-tools` | konto z rolą `admin`, logowanie w tools | API admina core, API admina auth | `sub`, `roles` |
 | `islanders-internal` | core (client credentials) | wewnętrzne API auth | `sub = service:core:<slug>` |
 
@@ -91,13 +91,14 @@ Wszystkie tokeny mają `iss = https://users.islanders.online`, `iat`, `exp`, `jt
 - Podpis, `iss`, `aud`, `exp` — kluczem z JWKS trzymanym w pamięci (odświeżanie co godzinę
   i przy nieznanym `kid`). Brak auth nie przerywa weryfikacji.
 - Świat `isTest` wymaga roli `tester` lub `admin`.
-- `POST /v1/join` tylko przy statusie `OPEN`; tworzy **profil** z kluczem `accountId`
+- `POST /v1/join` tylko przy statusie `OPEN`; tworzy **profil** z kluczem `playerId`
   i kopią `nickname`.
 - Każda inna trasa gry wymaga istniejącego profilu; zasób (osada, flota, zlecenie) musi
   należeć do profilu. Reguły informacyjne — `docs/api-guidelines.md`, sekcja 7.
-- Ban na świecie to stan profilu w core. Ban globalny to odmowa wydania tokenu w auth —
-  działa najpóźniej po czasie życia access tokenu.
-- Core przechowuje o koncie wyłącznie `accountId` i `nickname`. E-mail nie opuszcza auth.
+- **Gracz zablokowany** (Blocked Player) nie dostaje nowych tokenów z auth — blokada działa
+  najpóźniej po czasie życia access tokenu. Jego stan w światach trwa bez zmian. Zamrożenie
+  profilu na jednym świecie jest poza zakresem i wymaga własnego specu.
+- Core przechowuje o koncie wyłącznie `playerId` i `nickname`. E-mail nie opuszcza auth.
 
 Natychmiastowe unieważnianie tokenów (kanał unieważnień z auth do core) jest świadomie
 odłożone — ADR 0005.
@@ -111,10 +112,10 @@ Jedna baza to jeden świat, więc żadna tabela nie ma `world_id`.
 | Tabela | Klucz | Treść |
 |---|---|---|
 | `world_settings` | pojedynczy wiersz | `slug`, `name`, `status` (`DRAFT`, `OPEN`, `CLOSED`, `ENDED`), `width`, `height`, `is_test`, `generator_version`, `generator_params` jsonb (w tym seed), `weather_params` jsonb, `generated_at`, `opened_at` |
-| `islands` | `(x, y)` | `biome`, `radius`, `shape_seed` (kosmetyka wybrzeża po stronie klienta), `is_start_candidate` |
+| `islands` | `(x, y)` | `biome`, `radius`, `offset_x`, `offset_y` (położenie w komórce, ±0,13 — wyznacza odległość podróży, ADR 0003 klienta), `shape_seed` (kosmetyka wybrzeża po stronie klienta), `is_start_island` |
 | `deposits` | `(x, y)` → `islands` | bieżąca zawartość `wood … sulfur` |
-| `weather` | `valid_from` | `kind`, `wind_x`, `wind_y`, `created_at` |
-| `profiles` | `account_id` | `nickname`, `home_x`, `home_y`, `banned_at`, `joined_at` |
+| `weather` | `valid_from` | `condition`, `wind_x`, `wind_y`, `created_at` |
+| `profiles` | `player_id` | `nickname`, `home_x`, `home_y`, `joined_at` |
 | `settlements` | `(x, y)` → `islands` | jak w specu A/B, bez `world_id` |
 | `buildings`, `garrisons`, `settlement_orders`, `fleets` | jak w specach A/B, bez `world_id` | |
 | `outbox` | `id` | zdarzenia do auth (sekcja 7) |
@@ -127,27 +128,35 @@ osady pochodzi z wiersza `islands`.
 
 ```
 world:init --config world.json   → migracje na pustej bazie, world_settings, status DRAFT
-world:generate [--force]         → wyspy, znaleziska, pula startowa; powtarzalne tylko w DRAFT
+world:generate [--force]         → wyspy, znaleziska, wyspy startowe; powtarzalne tylko w DRAFT
 world:open                       → status OPEN, zgłoszenie do rejestru auth (z ponawianiem)
-world:export --out f [--with-players --anonymize]   → wersjonowany .json.gz
+world:export --out f [--with-players [--anonymize]] → wersjonowany .json.gz; profile domyślnie z prawdziwymi playerId
 world:import --in f              → odtworzenie świata 1:1 na pustej bazie
 ```
 
 Generator to czysta funkcja `generate(params) → WorldDraft` z numerem `generator_version`.
 Te same parametry dają ten sam draft, ale to wygoda, nie kontrakt — autorytetem jest baza
-(ADR 0004). Pula wysp startowych jest wyznaczana przy generacji tak, żeby każda wyspa startowa
-miała w zasięgu wyspy innych biomów; dołączenie gracza wybiera z tej puli.
+(ADR 0004). **Wyspy startowe** są wyznaczane przy generacji tak, żeby każda miała w zasięgu wyspy innych
+biomów. Nie są zarezerwowane — można je kolonizować; dołączenie gracza wybiera wolną wyspę
+startową, a gdy ich zabraknie, dowolną wolną wyspę o biomie dozwolonym dla osady domowej.
+
+Kopia świata produkcyjnego na **świat testowy** domyślnie zachowuje profile z prawdziwymi
+`playerId` i pseudonimami, żeby tester sprawdzał nową wersję na własnym stanie.
+`--anonymize` podmienia je na fikcyjne, gdy kopia wychodzi poza zespół.
 
 ### 5.3 Pogoda
 
-- Jedna pogoda dla całego świata, zmieniana co pełną godzinę UTC.
-- Tabela `weather` trzyma pełną historię; zawsze istnieje wiersz bieżący i następny (prognoza).
+- **Pogoda** (Weather) — jedna dla całego świata na każdą pełną godzinę UTC: **wiatr** i **warunki**
+  (Condition).
+- Tabela `weather` trzyma pełną historię; zawsze istnieje wiersz bieżący i następny — **prognoza**
+  (Forecast), publiczna i niezmienna po ogłoszeniu.
 - `nextWeather(prev, rng, params)` — czysta funkcja w `packages/domain`: płynny dryf wiatru,
-  łańcuch Markowa dla `kind` (`CLEAR`, `CLOUDY`, `RAIN`, `STORM`).
+  łańcuch Markowa dla `condition` (`CLEAR`, `CLOUDY`, `RAIN`, `STORM`).
 - Tick: zadanie cykliczne BullMQ z `jobId` od godziny i sprawdzenie przy starcie; zapis
   `INSERT … ON CONFLICT (valid_from) DO NOTHING`; po przestoju uzupełniane są brakujące godziny.
 - Wpływ na grę w MVP: wiatr z wiersza obowiązującego w chwili wypłynięcia floty zamraża jej
-  czas podróży. Pozostałe efekty pogody wejdą osobnym specem.
+  czas podróży. Jawna prognoza czyni wybór godziny wypłynięcia częścią taktyki — to zamierzone.
+  Warunki nie wpływają na grę; ich efekty wejdą osobnym specem.
 
 ### 5.4 Zadania w czasie
 
@@ -191,7 +200,7 @@ nigdy przez publiczne domeny. Kontrakty w `packages/contracts`, ścieżki `/inte
 | `GET <adminUrl>/health/ready` | auth → core | sonda dostępności świata dla pola `reachable` (co 30 s) |
 | `/admin/v1/*` | tools → core | odczyty panelu |
 
-**Outbox.** Zdarzenie (`WorldStatusChanged`, `PlayerJoinedWorld`, `PlayerLeftWorld`) zapisuje
+**Outbox.** Zdarzenie (`WorldStatusChanged`, `PlayerJoinedWorld`) zapisuje
 się w tabeli `outbox` w tej samej transakcji co zmiana, która je wywołała. Wysyłacz pod blokadą
 doradczą wysyła partie z backoffem i jitterem, oznacza wysłane, a auth przyjmuje je idempotentnie.
 Gwarancja: co najmniej raz, w kolejności w obrębie świata.

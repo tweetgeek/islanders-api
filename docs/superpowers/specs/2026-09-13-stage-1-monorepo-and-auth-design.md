@@ -99,7 +99,7 @@ Schematy zod z wyprowadzonymi typami, bez zależności poza `zod`:
 - `worlds`: `WorldStatus` (`DRAFT`, `OPEN`, `CLOSED`, `ENDED`), `WorldRegistration`
   (`name`, `publicUrl`, `adminUrl`, `status`, `isTest`), `WorldListItem`.
 - `events`: unia rozróżniana po `type` — `WorldStatusChanged` (`status`),
-  `PlayerJoinedWorld` (`accountId`, `joinedAt`), `PlayerLeftWorld` (`accountId`, `leftAt`);
+  `PlayerJoinedWorld` (`playerId`, `joinedAt`);
   każde z `eventId` uuid, `worldSlug`, `occurredAt`. `EventBatch` do 100 zdarzeń.
 - `errors`: `ErrorBody` (`statusCode`, `error`, `message`, opcjonalne `field`).
 - `slug`: `^[a-z0-9]+(-[a-z0-9]+)*$`, 3–40 znaków.
@@ -110,10 +110,10 @@ Schematy zod z wyprowadzonymi typami, bez zależności poza `zod`:
 
 | Tabela | Klucz | Kolumny | Uwagi |
 |---|---|---|---|
-| `accounts` | `id uuid` | `email citext` unik., `nickname citext` unik., `password_hash`, `roles text[]` domyślnie `{player}`, `disabled_at`, `created_at` | CHECK: `roles <@ {player,tester,admin}` i `player = ANY(roles)` |
-| `refresh_tokens` | `id uuid` | `account_id` → `accounts` cascade, `token_hash` unik., `expires_at`, `revoked_at`, `replaced_by_id`, `created_at` | semantyka jak w specu A |
+| `players` | `id uuid` | `email citext` unik., `nickname citext` unik., `password_hash`, `roles text[]` domyślnie `{player}`, `disabled_at`, `created_at` | CHECK: `roles <@ {player,tester,admin}` i `player = ANY(roles)` |
+| `refresh_tokens` | `id uuid` | `player_id` → `players` cascade, `token_hash` unik., `expires_at`, `revoked_at`, `replaced_by_id`, `created_at` | semantyka jak w specu A |
 | `worlds` | `slug` | `name`, `public_url`, `admin_url`, `status`, `is_test`, `reachable boolean` domyślnie `false`, `last_probe_at`, `created_at`, `updated_at` | |
-| `world_memberships` | `(account_id, world_slug)` | `joined_at`, `left_at` | FK do `accounts` i `worlds` |
+| `profiles` | `(player_id, world_slug)` | `joined_at` | odbicie profili ze światów; FK do `players` i `worlds`; profil nie kończy się w MVP |
 | `processed_events` | `event_id uuid` | `world_slug`, `type`, `received_at` | |
 
 Walidacja pseudonimu, hasła i e-maila bez zmian wobec specu A §8.
@@ -134,7 +134,7 @@ Walidacja pseudonimu, hasła i e-maila bez zmian wobec specu A §8.
 
 | Trasa | Ciało | Odpowiedź | Uwagi |
 |---|---|---|---|
-| `POST /v1/auth/register` | `{ email, nickname, password }` | `201 { accountId, nickname, roles, accessToken, refreshToken }` | 409 z `field` |
+| `POST /v1/auth/register` | `{ email, nickname, password }` | `201 { playerId, nickname, roles, accessToken, refreshToken }` | 409 z `field` |
 | `POST /v1/auth/login` | `{ email, password }` | `200` jak wyżej | atrapa argon2; konto zablokowane → 401 tą samą treścią |
 | `POST /v1/auth/refresh` | `{ refreshToken }` | `200 { accessToken, refreshToken }` | okno łaski 60 s; rotacja w transakcji; zablokowane → 401; role i pseudonim czytane z bazy przy każdym odświeżeniu |
 | `POST /v1/auth/logout` | `{ refreshToken }` | `204` | semantyka jak w specu A |
@@ -150,7 +150,7 @@ Prefiks `/v1` bez `/api` — domena wskazuje usługę.
 |---|---|---|
 | `POST /internal/v1/token` | `{ clientId, clientSecret }` | porównanie skrótu w stałym czasie; token `ServiceClaims` |
 | `PUT /internal/v1/worlds/:slug` | token serwisowy | tylko własny `worldSlug` (inaczej 403); upsert `WorldRegistration` |
-| `POST /internal/v1/events` | token serwisowy | `EventBatch`; każde zdarzenie w transakcji: `INSERT processed_events … ON CONFLICT DO NOTHING`, gdy wstawiono — zastosuj (status świata, członkostwo); zdarzenie cudzego świata → 403 dla całej partii; zdarzenie o świecie spoza rejestru → 409 |
+| `POST /internal/v1/events` | token serwisowy | `EventBatch`; każde zdarzenie w transakcji: `INSERT processed_events … ON CONFLICT DO NOTHING`, gdy wstawiono — zastosuj (status świata, profil); zdarzenie cudzego świata → 403 dla całej partii; zdarzenie o świecie spoza rejestru → 409 |
 | `GET /.well-known/jwks.json` | — | jak publiczne |
 | `GET /health/live`, `/health/ready` | — | Postgres i Redis auth |
 
@@ -167,9 +167,9 @@ i `last_probe_at`. Wynik sondy nie zmienia `status`.
 
 | Komenda | Działanie |
 |---|---|
-| `account:roles --email <e> [--add r] [--remove r]` | zmiana ról; `player` nieusuwalny |
-| `account:set-password --email <e>` | hasło z stdin, unieważnia refresh tokeny konta |
-| `account:disable --email <e>` / `account:enable` | `disabled_at`; disable unieważnia refresh tokeny |
+| `player:roles --email <e> [--add r] [--remove r]` | zmiana ról; `player` nieusuwalny |
+| `player:set-password --email <e>` | hasło z stdin, unieważnia refresh tokeny konta |
+| `player:disable --email <e>` / `player:enable` | `disabled_at`; disable unieważnia refresh tokeny |
 | `keys:generate` | wypisuje nowy wpis do `JWT_SIGNING_KEYS` |
 | `client:create --world <slug>` | wypisuje `clientId`, sekret (jednorazowo) i wpis do `SERVICE_CLIENTS` |
 
@@ -196,7 +196,7 @@ i `last_probe_at`. Wynik sondy nie zmienia `status`.
 - konto zablokowane: login i refresh 401, CLI enable przywraca;
 - `tools/login`: 403 bez `admin`, token z `aud: islanders-tools` z nią;
 - `GET /v1/worlds`: świat testowy niewidoczny dla `player`, widoczny dla `tester`; `DRAFT`
-  niewidoczny; `joined` po zdarzeniu `PlayerJoinedWorld` i fałsz po `PlayerLeftWorld`;
+  niewidoczny; `joined` po zdarzeniu `PlayerJoinedWorld`;
 - client credentials: zły sekret 401; `PUT` cudzego sluga 403;
 - zdarzenia: ta sama partia wysłana dwukrotnie zmienia stan raz;
 - trasy `/internal/*` nieosiągalne na porcie publicznym (404);

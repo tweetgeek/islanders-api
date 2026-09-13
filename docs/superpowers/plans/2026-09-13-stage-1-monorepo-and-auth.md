@@ -55,14 +55,14 @@ apps/
   auth/        src/config/env.ts  src/db/{db,schema/*}.ts  src/app.module.ts  src/main.ts
                src/keys/{signing-keys,generate-signing-key}.ts
                src/tokens/{token-issuer,token-verifier,jwks.controller,tokens.module,guards}.ts
-               src/accounts/{accounts.repository,refresh-tokens.repository,refresh-tokens,auth.service,
-                             auth.controller,auth.dto,accounts-admin,accounts.module}.ts
+               src/players/{players.repository,refresh-tokens.repository,refresh-tokens,auth.service,
+                             auth.controller,auth.dto,players-admin,players.module}.ts
                src/service-clients/{service-clients,generate-service-client,internal-token.controller}.ts
                src/worlds/{worlds.repository,worlds.controller,internal-worlds.controller,worlds.module}.ts
                src/events/{events.service,internal-events.controller}.ts
                src/probe/{world-probe,world-probe.scheduler}.ts
                src/common/zod.pipe.ts
-               src/cli/{migrate,accounts,keys-generate,client-create}.ts
+               src/cli/{migrate,players,keys-generate,client-create}.ts
                test/support/{global-setup,test-app,keys,fixtures,vitest.d}.ts  test/*.e2e-spec.ts
 ```
 
@@ -1524,7 +1524,7 @@ const joined = (overrides: Record<string, unknown> = {}) => ({
   eventId: randomUUID(),
   worldSlug: 'world-1',
   occurredAt: '2026-09-13T12:00:00.000Z',
-  accountId: randomUUID(),
+  playerId: randomUUID(),
   joinedAt: '2026-09-13T12:00:00.000Z',
   ...overrides,
 });
@@ -1592,7 +1592,7 @@ describe('kontrakty', () => {
       eventBatchSchema.safeParse({ events: Array.from({ length: 101 }, () => joined()) }).success,
     ).toBe(false);
     expect(eventBatchSchema.safeParse({ events: [joined({ type: 'PlayerBanned' })] }).success).toBe(false);
-    expect(eventBatchSchema.safeParse({ events: [joined({ accountId: 'nie-uuid' })] }).success).toBe(false);
+    expect(eventBatchSchema.safeParse({ events: [joined({ playerId: 'nie-uuid' })] }).success).toBe(false);
   });
 });
 ```
@@ -1718,21 +1718,13 @@ export const worldStatusChangedSchema = z.object({
 export const playerJoinedWorldSchema = z.object({
   ...eventBase,
   type: z.literal('PlayerJoinedWorld'),
-  accountId: z.uuid(),
+  playerId: z.uuid(),
   joinedAt: z.iso.datetime(),
-});
-
-export const playerLeftWorldSchema = z.object({
-  ...eventBase,
-  type: z.literal('PlayerLeftWorld'),
-  accountId: z.uuid(),
-  leftAt: z.iso.datetime(),
 });
 
 export const worldEventSchema = z.discriminatedUnion('type', [
   worldStatusChangedSchema,
   playerJoinedWorldSchema,
-  playerLeftWorldSchema,
 ]);
 export type WorldEvent = z.infer<typeof worldEventSchema>;
 
@@ -1780,7 +1772,7 @@ git commit -m "Add @islanders/contracts with token claims, world registry and ev
 - Create (platform): `packages/platform/src/http/port-scope.ts` (+ `port-scope.spec.ts`), `packages/platform/src/http/internal-listener.ts`, `packages/platform/src/health/health.module.ts`
 - Modify (platform): `packages/platform/src/index.ts`
 - Create (auth): `apps/auth/{package.json,nest-cli.json,tsconfig.json,tsconfig.build.json,vitest.config.ts,vitest.config.e2e.ts,drizzle.config.ts,.env.example}`
-- Create (auth): `apps/auth/src/config/env.ts` (+ `env.spec.ts`), `apps/auth/src/db/db.ts`, `apps/auth/src/db/schema/{accounts,refresh-tokens,worlds,world-memberships,processed-events,index}.ts`, `apps/auth/src/app.module.ts`, `apps/auth/src/bootstrap.ts`, `apps/auth/src/main.ts`, `apps/auth/src/cli/migrate.ts`
+- Create (auth): `apps/auth/src/config/env.ts` (+ `env.spec.ts`), `apps/auth/src/db/db.ts`, `apps/auth/src/db/schema/{players,refresh-tokens,worlds,profiles,processed-events,index}.ts`, `apps/auth/src/app.module.ts`, `apps/auth/src/bootstrap.ts`, `apps/auth/src/main.ts`, `apps/auth/src/cli/migrate.ts`
 - Create (auth): `apps/auth/drizzle/*` (generowane)
 - Create (auth): `apps/auth/test/support/{global-setup,test-app,vitest.d}.ts`, `apps/auth/test/health.e2e-spec.ts`
 - Modify: root `package.json`
@@ -1789,7 +1781,7 @@ git commit -m "Add @islanders/contracts with token claims, world registry and ev
 - Consumes: platform z Tasków 3–4.
 - Produces:
   - platform: `INTERNAL_REQUEST: symbol`, `portScopeMiddleware(options: PortScopeOptions)`, `interface PortScopeOptions { internalPrefixes: string[]; sharedPaths: string[] }`, `listenInternal(app: INestApplication, port: number, host?: string): Promise<Server>`, `closeServer(server: Server): Promise<void>`, `HealthModule`, `HealthController` (`GET health/live`, `GET health/ready`)
-  - auth: `type AuthEnv`, `parseAuthEnv(raw)`, `AuthDbModule`, `type AuthDb`, `type AuthDbClient`, tabele `accounts`, `refreshTokens`, `worlds`, `worldMemberships`, `processedEvents`, `AppModule.forRoot(env: AuthEnv)`, `startAuth(env): Promise<{ app; internalServer }>`, `configureAuthApp(app, env)`
+  - auth: `type AuthEnv`, `parseAuthEnv(raw)`, `AuthDbModule`, `type AuthDb`, `type AuthDbClient`, tabele `players`, `refreshTokens`, `worlds`, `profiles`, `processedEvents`, `AppModule.forRoot(env: AuthEnv)`, `startAuth(env): Promise<{ app; internalServer }>`, `configureAuthApp(app, env)`
   - auth test: `createTestApp(options?): Promise<TestApp>`, `interface TestApp { app: INestApplication; publicHttp: () => TestAgent; internalHttp: () => TestAgent; close(): Promise<void> }`
 
 - [ ] **Step 1: Test zakresu portów (failing)**
@@ -2012,10 +2004,10 @@ Expected: PASS.
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "nest build && node dist/cli/migrate.js",
-    "account:roles": "node dist/cli/accounts.js roles",
-    "account:set-password": "node dist/cli/accounts.js set-password",
-    "account:disable": "node dist/cli/accounts.js disable",
-    "account:enable": "node dist/cli/accounts.js enable",
+    "player:roles": "node dist/cli/players.js roles",
+    "player:set-password": "node dist/cli/players.js set-password",
+    "player:disable": "node dist/cli/players.js disable",
+    "player:enable": "node dist/cli/players.js enable",
     "keys:generate": "node dist/cli/keys-generate.js",
     "client:create": "node dist/cli/client-create.js"
   },
@@ -2209,14 +2201,14 @@ Expected: PASS.
 
 - [ ] **Step 6: Schemat bazy**
 
-`apps/auth/src/db/schema/accounts.ts`:
+`apps/auth/src/db/schema/players.ts`:
 ```ts
 import { sql } from 'drizzle-orm';
 import { check, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { citext } from '@islanders/platform/citext';
 
-export const accounts = pgTable(
-  'accounts',
+export const players = pgTable(
+  'players',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     email: citext('email').notNull().unique(),
@@ -2228,7 +2220,7 @@ export const accounts = pgTable(
   },
   (t) => [
     check(
-      'accounts_roles_valid',
+      'players_roles_valid',
       sql`${t.roles} <@ ARRAY['player','tester','admin']::text[] AND 'player' = ANY(${t.roles})`,
     ),
   ],
@@ -2237,15 +2229,15 @@ export const accounts = pgTable(
 `apps/auth/src/db/schema/refresh-tokens.ts`:
 ```ts
 import { pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
-import { accounts } from './accounts.js';
+import { players } from './players.js';
 
 export const refreshTokens = pgTable(
   'refresh_tokens',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    accountId: uuid('account_id')
+    playerId: uuid('player_id')
       .notNull()
-      .references(() => accounts.id, { onDelete: 'cascade' }),
+      .references(() => players.id, { onDelete: 'cascade' }),
     tokenHash: text('token_hash').notNull(),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
@@ -2276,25 +2268,25 @@ export const worlds = pgTable('worlds', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 ```
-`apps/auth/src/db/schema/world-memberships.ts`:
+`apps/auth/src/db/schema/profiles.ts`:
 ```ts
 import { pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { accounts } from './accounts.js';
+import { players } from './players.js';
 import { worlds } from './worlds.js';
 
-export const worldMemberships = pgTable(
-  'world_memberships',
+/** Odbicie profili ze światów: gracz ma profil na świecie. Profil nie kończy się w MVP. */
+export const profiles = pgTable(
+  'profiles',
   {
-    accountId: uuid('account_id')
+    playerId: uuid('player_id')
       .notNull()
-      .references(() => accounts.id, { onDelete: 'cascade' }),
+      .references(() => players.id, { onDelete: 'cascade' }),
     worldSlug: text('world_slug')
       .notNull()
       .references(() => worlds.slug, { onDelete: 'cascade' }),
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull(),
-    leftAt: timestamp('left_at', { withTimezone: true }),
   },
-  (t) => [primaryKey({ columns: [t.accountId, t.worldSlug] })],
+  (t) => [primaryKey({ columns: [t.playerId, t.worldSlug] })],
 );
 ```
 `apps/auth/src/db/schema/processed-events.ts`:
@@ -2310,10 +2302,10 @@ export const processedEvents = pgTable('processed_events', {
 ```
 `apps/auth/src/db/schema/index.ts`:
 ```ts
-export * from './accounts.js';
+export * from './players.js';
+export * from './profiles.js';
 export * from './processed-events.js';
 export * from './refresh-tokens.js';
-export * from './world-memberships.js';
 export * from './worlds.js';
 ```
 `apps/auth/src/db/db.ts`:
@@ -2345,7 +2337,7 @@ CREATE EXTENSION IF NOT EXISTS citext;
 npx drizzle-kit generate --name initial_schema
 cd ../..
 ```
-Expected: `apps/auth/drizzle/0001_initial_schema.sql` z tabelami `accounts`, `refresh_tokens`, `worlds`, `world_memberships`, `processed_events`, typem `world_status` i ograniczeniem `accounts_roles_valid`.
+Expected: `apps/auth/drizzle/0001_initial_schema.sql` z tabelami `players`, `refresh_tokens`, `worlds`, `profiles`, `processed_events`, typem `world_status` i ograniczeniem `players_roles_valid`.
 
 `apps/auth/src/cli/migrate.ts`:
 ```ts
@@ -2621,7 +2613,7 @@ git commit -m "Add the auth service skeleton with public and internal ports, hea
 **Files:**
 - Create: `apps/auth/src/keys/signing-keys.ts` (+ `signing-keys.spec.ts`), `apps/auth/src/keys/generate-signing-key.ts`
 - Create: `apps/auth/src/tokens/{token-issuer,token-verifier,jwks.controller,tokens.module}.ts`
-- Create: `apps/auth/src/accounts/{refresh-tokens,accounts.repository,refresh-tokens.repository,auth.dto,auth.service,auth.controller,accounts.module}.ts`
+- Create: `apps/auth/src/players/{refresh-tokens,players.repository,refresh-tokens.repository,auth.dto,auth.service,auth.controller,players.module}.ts`
 - Create: `apps/auth/test/support/{keys,fixtures}.ts`, `apps/auth/test/auth.e2e-spec.ts`
 - Modify: `apps/auth/src/app.module.ts`, `apps/auth/test/support/test-app.ts`
 
@@ -2630,14 +2622,14 @@ git commit -m "Add the auth service skeleton with public and internal ports, hea
 - Produces:
   - `signingKeyEntrySchema`, `type SigningKeyEntry = { kid: string; privateJwk: JWK; status: 'active' | 'retiring' }`, `parseSigningKeys(entries: unknown[]): SigningKeyEntry[]` (rzuca `Error`), `publicJwks(entries): JWK[]`, `SIGNING_KEYS: symbol`, `interface SigningKeys { activeKid: string; activeKey: CryptoKey; jwks: { keys: JWK[] } }`, `loadSigningKeys(entries): Promise<SigningKeys>`
   - `generateSigningKeyEntry(now?: Date): Promise<SigningKeyEntry>`
-  - `TokenIssuer.worldsAccess(account: TokenAccount): Promise<IssuedToken>`, `.tools(account): Promise<IssuedToken>`, `.service(worldSlug: string): Promise<IssuedToken>`; `interface TokenAccount { id: string; roles: Role[]; nickname: string }`; `interface IssuedToken { token: string; expiresAt: Date }`
+  - `TokenIssuer.worldsAccess(player: TokenPlayer): Promise<IssuedToken>`, `.tools(player): Promise<IssuedToken>`, `.service(worldSlug: string): Promise<IssuedToken>`; `interface TokenPlayer { id: string; roles: Role[]; nickname: string }`; `interface IssuedToken { token: string; expiresAt: Date }`
   - `TokenVerifier.verify<A extends keyof typeof AUDIENCE>(token: string, audience: A): Promise<ClaimsFor<A>>` (rzuca `UnauthorizedException`)
   - `TOOLS_TOKEN_TTL_SECONDS = 3600`, `SERVICE_TOKEN_TTL_SECONDS = 300`
-  - `AccountsRepository`: `create`, `findByEmail`, `findById`, `setRoles(id, roles)`, `setPasswordHash(id, hash)`, `setDisabledAt(id, at: Date | null)`; `type AccountRow`
-  - `RefreshTokensRepository`: `create(client, input)`, `findByHashForUpdate(client, hash)`, `findByHash(hash)`, `revoke(client, id, at, replacedById)`, `revokeAllForAccount(client, accountId, at)`
-  - `ARGON2_OPTIONS`, `AuthService.register|login|refresh|logout`, `type AuthResult = { accountId: string; nickname: string; roles: Role[]; accessToken: string; refreshToken: string }`
-  - `TokensModule` (globalny: `SIGNING_KEYS`, `TokenIssuer`, `TokenVerifier`, `JwksController`), `AccountsModule`
-  - test: `testSigningKeys: { active: SigningKeyEntry; other: SigningKeyEntry }`, `keysEnv(...entries): string`, `registerAccount(t: TestApp, overrides?)`, `uniqueSuffix()`, `bearer(token)`
+  - `PlayersRepository`: `create`, `findByEmail`, `findById`, `setRoles(id, roles)`, `setPasswordHash(id, hash)`, `setDisabledAt(id, at: Date | null)`; `type PlayerRow`
+  - `RefreshTokensRepository`: `create(client, input)`, `findByHashForUpdate(client, hash)`, `findByHash(hash)`, `revoke(client, id, at, replacedById)`, `revokeAllForPlayer(client, playerId, at)`
+  - `ARGON2_OPTIONS`, `AuthService.register|login|refresh|logout`, `type AuthResult = { playerId: string; nickname: string; roles: Role[]; accessToken: string; refreshToken: string }`
+  - `TokensModule` (globalny: `SIGNING_KEYS`, `TokenIssuer`, `TokenVerifier`, `JwksController`), `PlayersModule`
+  - test: `testSigningKeys: { active: SigningKeyEntry; other: SigningKeyEntry }`, `keysEnv(...entries): string`, `registerPlayer(t: TestApp, overrides?)`, `uniqueSuffix()`, `bearer(token)`
 
 - [ ] **Step 1: Test kluczy (failing)**
 
@@ -2789,7 +2781,7 @@ import { SIGNING_KEYS, type SigningKeys } from '../keys/signing-keys.js';
 export const TOOLS_TOKEN_TTL_SECONDS = 3600;
 export const SERVICE_TOKEN_TTL_SECONDS = 300;
 
-export interface TokenAccount {
+export interface TokenPlayer {
   id: string;
   roles: Role[];
   nickname: string;
@@ -2808,17 +2800,17 @@ export class TokenIssuer {
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
-  worldsAccess(account: TokenAccount): Promise<IssuedToken> {
+  worldsAccess(player: TokenPlayer): Promise<IssuedToken> {
     return this.sign(
-      { roles: account.roles, nickname: account.nickname },
+      { roles: player.roles, nickname: player.nickname },
       AUDIENCE.worlds,
-      account.id,
+      player.id,
       this.env.JWT_ACCESS_TTL,
     );
   }
 
-  tools(account: TokenAccount): Promise<IssuedToken> {
-    return this.sign({ roles: account.roles }, AUDIENCE.tools, account.id, TOOLS_TOKEN_TTL_SECONDS);
+  tools(player: TokenPlayer): Promise<IssuedToken> {
+    return this.sign({ roles: player.roles }, AUDIENCE.tools, player.id, TOOLS_TOKEN_TTL_SECONDS);
   }
 
   service(worldSlug: string): Promise<IssuedToken> {
@@ -2947,7 +2939,7 @@ export class TokensModule {}
 
 - [ ] **Step 4: Repozytoria i funkcje tokenu odświeżającego**
 
-`apps/auth/src/accounts/refresh-tokens.ts`:
+`apps/auth/src/players/refresh-tokens.ts`:
 ```ts
 import { createHash, randomBytes } from 'node:crypto';
 
@@ -2963,51 +2955,51 @@ export function hashRefreshToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
 }
 ```
-`apps/auth/src/accounts/accounts.repository.ts`:
+`apps/auth/src/players/players.repository.ts`:
 ```ts
 import { Inject, Injectable } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import type { Role } from '@islanders/contracts';
 import { DB, type AuthDb, type AuthDbClient } from '../db/db.js';
-import { accounts } from '../db/schema/index.js';
+import { players } from '../db/schema/index.js';
 
-export type AccountRow = typeof accounts.$inferSelect & { roles: Role[] };
+export type PlayerRow = typeof players.$inferSelect & { roles: Role[] };
 
 @Injectable()
-export class AccountsRepository {
+export class PlayersRepository {
   constructor(@Inject(DB) private readonly db: AuthDb) {}
 
-  /** Rzuca 23505 (accounts_email_unique / accounts_nickname_unique) przy duplikacie. */
-  async create(input: { email: string; nickname: string; passwordHash: string }): Promise<AccountRow> {
-    const [row] = await this.db.insert(accounts).values(input).returning();
-    return row as AccountRow;
+  /** Rzuca 23505 (players_email_unique / players_nickname_unique) przy duplikacie. */
+  async create(input: { email: string; nickname: string; passwordHash: string }): Promise<PlayerRow> {
+    const [row] = await this.db.insert(players).values(input).returning();
+    return row as PlayerRow;
   }
 
-  async findByEmail(email: string): Promise<AccountRow | undefined> {
-    return (await this.db.query.accounts.findFirst({ where: eq(accounts.email, email) })) as
-      | AccountRow
+  async findByEmail(email: string): Promise<PlayerRow | undefined> {
+    return (await this.db.query.players.findFirst({ where: eq(players.email, email) })) as
+      | PlayerRow
       | undefined;
   }
 
-  async findById(id: string, client: AuthDbClient = this.db): Promise<AccountRow | undefined> {
-    const [row] = await client.select().from(accounts).where(eq(accounts.id, id));
-    return row as AccountRow | undefined;
+  async findById(id: string, client: AuthDbClient = this.db): Promise<PlayerRow | undefined> {
+    const [row] = await client.select().from(players).where(eq(players.id, id));
+    return row as PlayerRow | undefined;
   }
 
   async setRoles(id: string, roles: Role[]): Promise<void> {
-    await this.db.update(accounts).set({ roles }).where(eq(accounts.id, id));
+    await this.db.update(players).set({ roles }).where(eq(players.id, id));
   }
 
   async setPasswordHash(client: AuthDbClient, id: string, passwordHash: string): Promise<void> {
-    await client.update(accounts).set({ passwordHash }).where(eq(accounts.id, id));
+    await client.update(players).set({ passwordHash }).where(eq(players.id, id));
   }
 
   async setDisabledAt(client: AuthDbClient, id: string, at: Date | null): Promise<void> {
-    await client.update(accounts).set({ disabledAt: at }).where(eq(accounts.id, id));
+    await client.update(players).set({ disabledAt: at }).where(eq(players.id, id));
   }
 }
 ```
-`apps/auth/src/accounts/refresh-tokens.repository.ts`:
+`apps/auth/src/players/refresh-tokens.repository.ts`:
 ```ts
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, isNull } from 'drizzle-orm';
@@ -3022,7 +3014,7 @@ export class RefreshTokensRepository {
 
   async create(
     client: AuthDbClient,
-    input: { accountId: string; tokenHash: string; expiresAt: Date },
+    input: { playerId: string; tokenHash: string; expiresAt: Date },
   ): Promise<RefreshTokenRow> {
     const [row] = await client.insert(refreshTokens).values(input).returning();
     return row;
@@ -3048,21 +3040,21 @@ export class RefreshTokensRepository {
     await client.update(refreshTokens).set({ revokedAt: at, replacedById }).where(eq(refreshTokens.id, id));
   }
 
-  async revokeAllForAccount(client: AuthDbClient, accountId: string, at: Date): Promise<void> {
+  async revokeAllForPlayer(client: AuthDbClient, playerId: string, at: Date): Promise<void> {
     await client
       .update(refreshTokens)
       .set({ revokedAt: at, replacedById: null })
-      .where(and(eq(refreshTokens.accountId, accountId), isNull(refreshTokens.revokedAt)));
+      .where(and(eq(refreshTokens.playerId, playerId), isNull(refreshTokens.revokedAt)));
   }
 }
 ```
 
 - [ ] **Step 5: DTO, serwis, kontroler, moduł**
 
-`apps/auth/src/accounts/auth.dto.ts` — skopiuj `apps/core/src/modules/auth/auth.dto.ts` bez zmian w klasach `RegisterDto`, `LoginDto`, `RefreshDto`, `TokenPairDto`, `ConflictFieldDto`, a `AuthResultDto` zastąp:
+`apps/auth/src/players/auth.dto.ts` — skopiuj `apps/core/src/modules/auth/auth.dto.ts` bez zmian w klasach `RegisterDto`, `LoginDto`, `RefreshDto`, `TokenPairDto`, `ConflictFieldDto`, a `AuthResultDto` zastąp:
 ```ts
 export class AuthResultDto {
-  @ApiProperty({ format: 'uuid' }) accountId!: string;
+  @ApiProperty({ format: 'uuid' }) playerId!: string;
   @ApiProperty() nickname!: string;
   @ApiProperty({ isArray: true, enum: ['player', 'tester', 'admin'] }) roles!: string[];
   @ApiProperty() accessToken!: string;
@@ -3074,7 +3066,7 @@ export class ToolsTokenDto {
   @ApiProperty() expiresAt!: string;
 }
 ```
-`apps/auth/src/accounts/auth.service.ts`:
+`apps/auth/src/players/auth.service.ts`:
 ```ts
 import {
   ConflictException,
@@ -3090,12 +3082,12 @@ import { CLOCK, DB, ENV, isUniqueViolation } from '@islanders/platform';
 import type { AuthEnv } from '../config/env.js';
 import type { AuthDb, AuthDbClient } from '../db/db.js';
 import { TokenIssuer } from '../tokens/token-issuer.js';
-import { AccountsRepository, type AccountRow } from './accounts.repository.js';
+import { PlayersRepository, type PlayerRow } from './players.repository.js';
 import { REFRESH_GRACE_MS, generateRefreshToken, hashRefreshToken } from './refresh-tokens.js';
 import { RefreshTokensRepository } from './refresh-tokens.repository.js';
 
 export interface AuthResult {
-  accountId: string;
+  playerId: string;
   nickname: string;
   roles: Role[];
   accessToken: string;
@@ -3124,7 +3116,7 @@ export class AuthService implements OnModuleInit {
   private dummyPasswordHash: string;
 
   constructor(
-    private readonly accounts: AccountsRepository,
+    private readonly players: PlayersRepository,
     private readonly refreshTokens: RefreshTokensRepository,
     private readonly issuer: TokenIssuer,
     @Inject(DB) private readonly db: AuthDb,
@@ -3138,43 +3130,43 @@ export class AuthService implements OnModuleInit {
 
   async register(input: { email: string; nickname: string; password: string }): Promise<AuthResult> {
     const passwordHash = await argon2.hash(input.password, ARGON2_OPTIONS);
-    let account: AccountRow;
+    let player: PlayerRow;
     try {
-      account = await this.accounts.create({ ...input, passwordHash });
+      player = await this.players.create({ ...input, passwordHash });
     } catch (err) {
-      if (isUniqueViolation(err, 'accounts_email_unique')) {
+      if (isUniqueViolation(err, 'players_email_unique')) {
         throw this.conflict('E-mail jest już zajęty', 'email');
       }
-      if (isUniqueViolation(err, 'accounts_nickname_unique')) {
+      if (isUniqueViolation(err, 'players_nickname_unique')) {
         throw this.conflict('Pseudonim jest już zajęty', 'nickname');
       }
       throw err;
     }
-    return this.issueInTransaction(account);
+    return this.issueInTransaction(player);
   }
 
   async login(input: { email: string; password: string }): Promise<AuthResult> {
     return this.issueInTransaction(await this.verifyCredentials(input));
   }
 
-  private async issueInTransaction(account: AccountRow): Promise<AuthResult> {
+  private async issueInTransaction(player: PlayerRow): Promise<AuthResult> {
     const { refreshTokenId: _id, ...result } = await this.db.transaction((tx) =>
-      this.issue(tx, account),
+      this.issue(tx, player),
     );
     return result;
   }
 
   /** Wspólne dla logowania gracza i logowania do tools. Zablokowane konto: ta sama treść 401. */
-  async verifyCredentials(input: { email: string; password: string }): Promise<AccountRow> {
-    const account = await this.accounts.findByEmail(input.email);
-    if (!account) {
+  async verifyCredentials(input: { email: string; password: string }): Promise<PlayerRow> {
+    const player = await this.players.findByEmail(input.email);
+    if (!player) {
       await argon2.verify(this.dummyPasswordHash, input.password);
       throw new UnauthorizedException(BAD_CREDENTIALS);
     }
-    if (!(await argon2.verify(account.passwordHash, input.password)) || account.disabledAt) {
+    if (!(await argon2.verify(player.passwordHash, input.password)) || player.disabledAt) {
       throw new UnauthorizedException(BAD_CREDENTIALS);
     }
-    return account;
+    return player;
   }
 
   /** Rotacja w jednej transakcji z blokadą wiersza starego tokenu (spec A §15.1). */
@@ -3192,11 +3184,11 @@ export class AuthService implements OnModuleInit {
           throw new UnauthorizedException('Refresh token unieważniony');
         }
       }
-      const account = await this.accounts.findById(row.accountId, tx);
-      if (!account || account.disabledAt) {
+      const player = await this.players.findById(row.playerId, tx);
+      if (!player || player.disabledAt) {
         throw new UnauthorizedException('Refresh token nieważny');
       }
-      const result = await this.issue(tx, account);
+      const result = await this.issue(tx, player);
       // Token wydany w oknie łaski nie jest linkowany z `replacedById`: kolumna zapisuje tylko
       // pierwsze ogniwo, a nadpisanie przesunęłoby `revokedAt`, czyli przedłużyło okno.
       if (!row.revokedAt) {
@@ -3222,20 +3214,20 @@ export class AuthService implements OnModuleInit {
 
   private async issue(
     client: AuthDbClient,
-    account: AccountRow,
+    player: PlayerRow,
   ): Promise<AuthResult & { refreshTokenId: string }> {
     const now = this.clock.now();
-    const access = await this.issuer.worldsAccess(account);
+    const access = await this.issuer.worldsAccess(player);
     const refreshToken = generateRefreshToken();
     const row = await this.refreshTokens.create(client, {
-      accountId: account.id,
+      playerId: player.id,
       tokenHash: hashRefreshToken(refreshToken),
       expiresAt: new Date(now.getTime() + this.env.JWT_REFRESH_TTL * 1000),
     });
     return {
-      accountId: account.id,
-      nickname: account.nickname,
-      roles: account.roles,
+      playerId: player.id,
+      nickname: player.nickname,
+      roles: player.roles,
       accessToken: access.token,
       refreshToken,
       refreshTokenId: row.id,
@@ -3247,7 +3239,7 @@ export class AuthService implements OnModuleInit {
   }
 }
 ```
-`apps/auth/src/accounts/auth.controller.ts`:
+`apps/auth/src/players/auth.controller.ts`:
 ```ts
 import { Body, Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
 import {
@@ -3307,22 +3299,22 @@ export class AuthController {
   }
 }
 ```
-`apps/auth/src/accounts/accounts.module.ts`:
+`apps/auth/src/players/players.module.ts`:
 ```ts
 import { Module } from '@nestjs/common';
-import { AccountsRepository } from './accounts.repository.js';
+import { PlayersRepository } from './players.repository.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { RefreshTokensRepository } from './refresh-tokens.repository.js';
 
 @Module({
   controllers: [AuthController],
-  providers: [AccountsRepository, RefreshTokensRepository, AuthService],
-  exports: [AccountsRepository, RefreshTokensRepository, AuthService],
+  providers: [PlayersRepository, RefreshTokensRepository, AuthService],
+  exports: [PlayersRepository, RefreshTokensRepository, AuthService],
 })
-export class AccountsModule {}
+export class PlayersModule {}
 ```
-W `apps/auth/src/app.module.ts` dodaj do `imports` (po `HealthModule`): `TokensModule`, `AccountsModule`.
+W `apps/auth/src/app.module.ts` dodaj do `imports` (po `HealthModule`): `TokensModule`, `PlayersModule`.
 
 - [ ] **Step 6: Wsparcie testów**
 
@@ -3356,8 +3348,8 @@ export function bearer(token: string): string {
   return `Bearer ${token}`;
 }
 
-export interface RegisteredAccount {
-  accountId: string;
+export interface RegisteredPlayer {
+  playerId: string;
   nickname: string;
   roles: string[];
   email: string;
@@ -3366,10 +3358,10 @@ export interface RegisteredAccount {
   refreshToken: string;
 }
 
-export async function registerAccount(
+export async function registerPlayer(
   t: TestApp,
   overrides: Partial<{ email: string; nickname: string; password: string }> = {},
-): Promise<RegisteredAccount> {
+): Promise<RegisteredPlayer> {
   const suffix = uniqueSuffix();
   const body = {
     email: overrides.email ?? `a-${suffix}@test.local`,
@@ -3387,7 +3379,7 @@ export async function registerAccount(
 ```ts
 import { createLocalJWKSet, jwtVerify } from 'jose';
 import { FixedClock } from '@islanders/domain/time';
-import { registerAccount, uniqueSuffix } from './support/fixtures.js';
+import { registerPlayer, uniqueSuffix } from './support/fixtures.js';
 import { createTestApp, type TestApp } from './support/test-app.js';
 
 const ISSUER = 'https://users.islanders.test';
@@ -3404,15 +3396,15 @@ describe('auth: konta i tokeny (e2e)', () => {
   });
 
   it('register: 201 z uuid konta, rolą player i parą tokenów', async () => {
-    const a = await registerAccount(t);
-    expect(a.accountId).toMatch(/^[0-9a-f-]{36}$/);
+    const a = await registerPlayer(t);
+    expect(a.playerId).toMatch(/^[0-9a-f-]{36}$/);
     expect(a.roles).toEqual(['player']);
     expect(a.accessToken.split('.')).toHaveLength(3);
     expect(a.refreshToken.length).toBeGreaterThanOrEqual(40);
   });
 
   it('access token weryfikuje się przez JWKS z iss, aud i claimami gracza — tak jak zrobi to core', async () => {
-    const a = await registerAccount(t);
+    const a = await registerPlayer(t);
     const jwksRes = await t.publicHttp().get('/.well-known/jwks.json').expect(200);
     expect(jwksRes.headers['cache-control']).toBe('public, max-age=300');
     const { payload, protectedHeader } = await jwtVerify(
@@ -3421,7 +3413,7 @@ describe('auth: konta i tokeny (e2e)', () => {
       { issuer: ISSUER, audience: 'islanders-worlds', currentDate: clock.now() },
     );
     expect(protectedHeader.alg).toBe('EdDSA');
-    expect(payload).toMatchObject({ sub: a.accountId, roles: ['player'], nickname: a.nickname });
+    expect(payload).toMatchObject({ sub: a.playerId, roles: ['player'], nickname: a.nickname });
     expect(payload.exp! - payload.iat!).toBe(900);
     await t.internalHttp().get('/.well-known/jwks.json').expect(200);
   });
@@ -3440,7 +3432,7 @@ describe('auth: konta i tokeny (e2e)', () => {
   });
 
   it('zajęty e-mail i pseudonim (inną wielkością liter) -> 409 z field', async () => {
-    const a = await registerAccount(t);
+    const a = await registerPlayer(t);
     const email = await t
       .publicHttp()
       .post('/v1/auth/register')
@@ -3456,9 +3448,9 @@ describe('auth: konta i tokeny (e2e)', () => {
   });
 
   it('login: 200; złe hasło i nieistniejące konto -> 401 o tej samej treści', async () => {
-    const a = await registerAccount(t);
+    const a = await registerPlayer(t);
     const ok = await t.publicHttp().post('/v1/auth/login').send({ email: a.email, password: a.password }).expect(200);
-    expect(ok.body.accountId).toBe(a.accountId);
+    expect(ok.body.playerId).toBe(a.playerId);
     const bad = await t.publicHttp().post('/v1/auth/login').send({ email: a.email, password: 'zle-haslo-123' }).expect(401);
     const missing = await t
       .publicHttp()
@@ -3469,7 +3461,7 @@ describe('auth: konta i tokeny (e2e)', () => {
   });
 
   it('refresh rotuje; stary token działa w oknie łaski 60 s, po nim 401', async () => {
-    const a = await registerAccount(t);
+    const a = await registerPlayer(t);
     const refresh = (token: string) => t.publicHttp().post('/v1/auth/refresh').send({ refreshToken: token });
     const first = await refresh(a.refreshToken).expect(200);
     expect(first.body.refreshToken).not.toBe(a.refreshToken);
@@ -3486,7 +3478,7 @@ describe('auth: konta i tokeny (e2e)', () => {
   });
 
   it('dwa równoległe odświeżenia tym samym tokenem kończą się 200 i jedną rotacją', async () => {
-    const a = await registerAccount(t);
+    const a = await registerPlayer(t);
     const [one, two] = await Promise.all([
       t.publicHttp().post('/v1/auth/refresh').send({ refreshToken: a.refreshToken }),
       t.publicHttp().post('/v1/auth/refresh').send({ refreshToken: a.refreshToken }),
@@ -3496,7 +3488,7 @@ describe('auth: konta i tokeny (e2e)', () => {
   });
 
   it('logout unieważnia natychmiast, także stary token w oknie łaski', async () => {
-    const a = await registerAccount(t);
+    const a = await registerPlayer(t);
     await t.publicHttp().post('/v1/auth/refresh').send({ refreshToken: a.refreshToken }).expect(200);
     clock.advance(10_000);
     try {
@@ -3513,7 +3505,7 @@ describe('auth: konta i tokeny (e2e)', () => {
     const body = { email: `k-${suffix}@t.pl`, nickname: `k_${suffix}`, password: 'haslo-testowe-123' };
     const registered = await t.publicHttp().post('/v1/auth/register').send(body).expect(201);
     expect(Object.keys(registered.body).sort()).toEqual(
-      ['accessToken', 'accountId', 'nickname', 'refreshToken', 'roles', 'serverTime'],
+      ['accessToken', 'playerId', 'nickname', 'refreshToken', 'roles', 'serverTime'],
     );
     const refreshed = await t
       .publicHttp()
@@ -3536,7 +3528,7 @@ Expected: PASS.
 ```bash
 npm test && npm run test:e2e && npm run lint
 git add -A
-git commit -m "Add accounts and EdDSA tokens with JWKS to the auth service"
+git commit -m "Add players and EdDSA tokens with JWKS to the auth service"
 ```
 
 ---
@@ -3544,34 +3536,34 @@ git commit -m "Add accounts and EdDSA tokens with JWKS to the auth service"
 ### Task 8: Role, blokada konta, logowanie do tools, CLI kont i kluczy, rotacja kluczy
 
 **Files:**
-- Create: `apps/auth/src/accounts/accounts-admin.ts`, `apps/auth/src/accounts/tools-auth.controller.ts`
-- Create: `apps/auth/src/cli/{cli-context,accounts,keys-generate}.ts`
-- Create: `apps/auth/test/accounts-admin.e2e-spec.ts`, `apps/auth/test/key-rotation.e2e-spec.ts`
-- Modify: `apps/auth/src/accounts/accounts.module.ts`
+- Create: `apps/auth/src/players/players-admin.ts`, `apps/auth/src/players/tools-auth.controller.ts`
+- Create: `apps/auth/src/cli/{cli-context,players,keys-generate}.ts`
+- Create: `apps/auth/test/players-admin.e2e-spec.ts`, `apps/auth/test/key-rotation.e2e-spec.ts`
+- Modify: `apps/auth/src/players/players.module.ts`
 
 **Interfaces:**
-- Consumes: `AccountsRepository`, `RefreshTokensRepository`, `AuthService.verifyCredentials`, `ARGON2_OPTIONS`, `TokenIssuer.tools` (Task 7).
+- Consumes: `PlayersRepository`, `RefreshTokensRepository`, `AuthService.verifyCredentials`, `ARGON2_OPTIONS`, `TokenIssuer.tools` (Task 7).
 - Produces:
-  - `AccountsAdmin.changeRoles(email: string, add: Role[], remove: Role[]): Promise<Role[]>`, `.setPassword(email: string, password: string): Promise<void>`, `.disable(email: string): Promise<void>`, `.enable(email: string): Promise<void>`; `class AccountNotFoundError extends Error`; `class InvalidRoleChangeError extends Error`
+  - `PlayersAdmin.changeRoles(email: string, add: Role[], remove: Role[]): Promise<Role[]>`, `.setPassword(email: string, password: string): Promise<void>`, `.disable(email: string): Promise<void>`, `.enable(email: string): Promise<void>`; `class PlayerNotFoundError extends Error`; `class InvalidRoleChangeError extends Error`
   - `POST /v1/auth/tools/login` → `200 { accessToken, expiresAt }`, `403` bez roli `admin`
   - `withCliContext<T>(fn: (app: INestApplicationContext) => Promise<T>): Promise<T>`
 
 - [ ] **Step 1: E2E administracji kont (failing)**
 
-`apps/auth/test/accounts-admin.e2e-spec.ts`:
+`apps/auth/test/players-admin.e2e-spec.ts`:
 ```ts
 import { createLocalJWKSet, jwtVerify } from 'jose';
-import { AccountsAdmin, AccountNotFoundError, InvalidRoleChangeError } from '../src/accounts/accounts-admin.js';
-import { registerAccount } from './support/fixtures.js';
+import { PlayersAdmin, PlayerNotFoundError, InvalidRoleChangeError } from '../src/players/players-admin.js';
+import { registerPlayer } from './support/fixtures.js';
 import { createTestApp, type TestApp } from './support/test-app.js';
 
 describe('auth: role, blokada i tools (e2e)', () => {
   let t: TestApp;
-  let admin: AccountsAdmin;
+  let admin: PlayersAdmin;
 
   beforeAll(async () => {
     t = await createTestApp();
-    admin = t.app.get(AccountsAdmin);
+    admin = t.app.get(PlayersAdmin);
   });
   afterAll(async () => {
     await t.close();
@@ -3581,7 +3573,7 @@ describe('auth: role, blokada i tools (e2e)', () => {
     t.publicHttp().post('/v1/auth/login').send({ email, password });
 
   it('nadanie i odebranie roli zmienia claimy przy następnym odświeżeniu', async () => {
-    const a = await registerAccount(t);
+    const a = await registerPlayer(t);
     expect(await admin.changeRoles(a.email, ['tester'], [])).toEqual(['player', 'tester']);
     const refreshed = await t.publicHttp().post('/v1/auth/refresh').send({ refreshToken: a.refreshToken }).expect(200);
     const jwks = (await t.publicHttp().get('/.well-known/jwks.json')).body;
@@ -3593,14 +3585,14 @@ describe('auth: role, blokada i tools (e2e)', () => {
   });
 
   it('rola player jest nieusuwalna, nieznana rola i nieznane konto są odrzucane', async () => {
-    const a = await registerAccount(t);
+    const a = await registerPlayer(t);
     await expect(admin.changeRoles(a.email, [], ['player'])).rejects.toBeInstanceOf(InvalidRoleChangeError);
     await expect(admin.changeRoles(a.email, ['king' as never], [])).rejects.toBeInstanceOf(InvalidRoleChangeError);
-    await expect(admin.changeRoles('nikt@test.local', ['tester'], [])).rejects.toBeInstanceOf(AccountNotFoundError);
+    await expect(admin.changeRoles('nikt@test.local', ['tester'], [])).rejects.toBeInstanceOf(PlayerNotFoundError);
   });
 
   it('blokada: login i refresh 401 tą samą treścią co złe hasło; odblokowanie przywraca logowanie', async () => {
-    const a = await registerAccount(t);
+    const a = await registerPlayer(t);
     await admin.disable(a.email);
     const blocked = await login(a.email, a.password).expect(401);
     const wrong = await login(a.email, 'zle-haslo-123').expect(401);
@@ -3613,7 +3605,7 @@ describe('auth: role, blokada i tools (e2e)', () => {
   });
 
   it('zmiana hasła: stare hasło 401, nowe 200, refresh tokeny unieważnione', async () => {
-    const a = await registerAccount(t);
+    const a = await registerPlayer(t);
     await admin.setPassword(a.email, 'nowe-haslo-456');
     await login(a.email, a.password).expect(401);
     await login(a.email, 'nowe-haslo-456').expect(200);
@@ -3622,7 +3614,7 @@ describe('auth: role, blokada i tools (e2e)', () => {
   });
 
   it('tools/login: 403 bez roli admin, token aud islanders-tools ważny 1 h z nią', async () => {
-    const a = await registerAccount(t);
+    const a = await registerPlayer(t);
     await t.publicHttp().post('/v1/auth/tools/login').send({ email: a.email, password: a.password }).expect(403);
     await admin.changeRoles(a.email, ['admin'], []);
     const res = await t.publicHttp().post('/v1/auth/tools/login').send({ email: a.email, password: a.password }).expect(200);
@@ -3636,12 +3628,12 @@ describe('auth: role, blokada i tools (e2e)', () => {
   });
 });
 ```
-Run: `npm run test:e2e -w apps/auth -- accounts-admin`
-Expected: FAIL (brak `accounts-admin.js`).
+Run: `npm run test:e2e -w apps/auth -- players-admin`
+Expected: FAIL (brak `players-admin.js`).
 
-- [ ] **Step 2: `AccountsAdmin`**
+- [ ] **Step 2: `PlayersAdmin`**
 
-`apps/auth/src/accounts/accounts-admin.ts`:
+`apps/auth/src/players/players-admin.ts`:
 ```ts
 import { Inject, Injectable } from '@nestjs/common';
 import argon2 from 'argon2';
@@ -3649,14 +3641,14 @@ import { ROLES, type Role } from '@islanders/contracts';
 import type { Clock } from '@islanders/domain/time';
 import { CLOCK, DB } from '@islanders/platform';
 import type { AuthDb } from '../db/db.js';
-import { AccountsRepository, type AccountRow } from './accounts.repository.js';
+import { PlayersRepository, type PlayerRow } from './players.repository.js';
 import { ARGON2_OPTIONS } from './auth.service.js';
 import { RefreshTokensRepository } from './refresh-tokens.repository.js';
 
-export class AccountNotFoundError extends Error {
+export class PlayerNotFoundError extends Error {
   constructor(email: string) {
     super(`Nie ma konta ${email}`);
-    this.name = 'AccountNotFoundError';
+    this.name = 'PlayerNotFoundError';
   }
 }
 
@@ -3676,9 +3668,9 @@ export class InvalidPasswordError extends Error {
 
 /** Operacje technika wywoływane z CLI. Bez tras HTTP — role nadaje się poza aplikacją. */
 @Injectable()
-export class AccountsAdmin {
+export class PlayersAdmin {
   constructor(
-    private readonly accounts: AccountsRepository,
+    private readonly players: PlayersRepository,
     private readonly refreshTokens: RefreshTokensRepository,
     @Inject(DB) private readonly db: AuthDb,
     @Inject(CLOCK) private readonly clock: Clock,
@@ -3693,11 +3685,11 @@ export class AccountsAdmin {
     if (remove.includes('player')) {
       throw new InvalidRoleChangeError('Roli player nie można odebrać');
     }
-    const account = await this.require(email);
+    const player = await this.require(email);
     const next = ROLES.filter(
-      (r) => (account.roles.includes(r) || add.includes(r)) && !remove.includes(r),
+      (r) => (player.roles.includes(r) || add.includes(r)) && !remove.includes(r),
     );
-    await this.accounts.setRoles(account.id, next);
+    await this.players.setRoles(player.id, next);
     return next;
   }
 
@@ -3705,39 +3697,39 @@ export class AccountsAdmin {
     if (password.length < 8 || password.length > 128) {
       throw new InvalidPasswordError();
     }
-    const account = await this.require(email);
+    const player = await this.require(email);
     const hash = await argon2.hash(password, ARGON2_OPTIONS);
     await this.db.transaction(async (tx) => {
-      await this.accounts.setPasswordHash(tx, account.id, hash);
-      await this.refreshTokens.revokeAllForAccount(tx, account.id, this.clock.now());
+      await this.players.setPasswordHash(tx, player.id, hash);
+      await this.refreshTokens.revokeAllForPlayer(tx, player.id, this.clock.now());
     });
   }
 
   async disable(email: string): Promise<void> {
-    const account = await this.require(email);
+    const player = await this.require(email);
     const now = this.clock.now();
     await this.db.transaction(async (tx) => {
-      await this.accounts.setDisabledAt(tx, account.id, now);
-      await this.refreshTokens.revokeAllForAccount(tx, account.id, now);
+      await this.players.setDisabledAt(tx, player.id, now);
+      await this.refreshTokens.revokeAllForPlayer(tx, player.id, now);
     });
   }
 
   async enable(email: string): Promise<void> {
-    const account = await this.require(email);
-    await this.accounts.setDisabledAt(this.db, account.id, null);
+    const player = await this.require(email);
+    await this.players.setDisabledAt(this.db, player.id, null);
   }
 
-  private async require(email: string): Promise<AccountRow> {
-    const account = await this.accounts.findByEmail(email);
-    if (!account) throw new AccountNotFoundError(email);
-    return account;
+  private async require(email: string): Promise<PlayerRow> {
+    const player = await this.players.findByEmail(email);
+    if (!player) throw new PlayerNotFoundError(email);
+    return player;
   }
 }
 ```
 
 - [ ] **Step 3: Logowanie do tools**
 
-`apps/auth/src/accounts/tools-auth.controller.ts`:
+`apps/auth/src/players/tools-auth.controller.ts`:
 ```ts
 import { Body, Controller, ForbiddenException, HttpCode, Post, UseGuards } from '@nestjs/common';
 import { ApiForbiddenResponse, ApiOkResponse, ApiTags, ApiUnauthorizedResponse } from '@nestjs/swagger';
@@ -3763,18 +3755,18 @@ export class ToolsAuthController {
   @ApiUnauthorizedResponse()
   @ApiForbiddenResponse()
   async login(@Body() dto: LoginDto): Promise<ToolsTokenDto> {
-    const account = await this.auth.verifyCredentials(dto);
-    if (!account.roles.includes('admin')) {
+    const player = await this.auth.verifyCredentials(dto);
+    if (!player.roles.includes('admin')) {
       throw new ForbiddenException('Wymagana rola admin');
     }
-    const { token, expiresAt } = await this.issuer.tools(account);
+    const { token, expiresAt } = await this.issuer.tools(player);
     return { accessToken: token, expiresAt: expiresAt.toISOString() };
   }
 }
 ```
-`apps/auth/src/accounts/accounts.module.ts` — `controllers: [AuthController, ToolsAuthController]`, `providers` i `exports` z dopisanym `AccountsAdmin`.
+`apps/auth/src/players/players.module.ts` — `controllers: [AuthController, ToolsAuthController]`, `providers` i `exports` z dopisanym `PlayersAdmin`.
 
-Run: `npm run test:e2e -w apps/auth -- accounts-admin`
+Run: `npm run test:e2e -w apps/auth -- players-admin`
 Expected: PASS.
 
 - [ ] **Step 4: E2E rotacji kluczy (failing → passing bez zmian w kodzie)**
@@ -3784,7 +3776,7 @@ Test dowodzi procedury ze specu §4.2 na trzech konfiguracjach tej samej bazy.
 `apps/auth/test/key-rotation.e2e-spec.ts`:
 ```ts
 import { createLocalJWKSet, jwtVerify } from 'jose';
-import { registerAccount } from './support/fixtures.js';
+import { registerPlayer } from './support/fixtures.js';
 import { keysEnv, testSigningKeys } from './support/keys.js';
 import { createTestApp } from './support/test-app.js';
 
@@ -3793,7 +3785,7 @@ describe('auth: rotacja kluczy podpisu (e2e)', () => {
     const { active: k1, other: k2 } = testSigningKeys;
 
     const before = await createTestApp({ env: { JWT_SIGNING_KEYS: keysEnv(k1) } });
-    const account = await registerAccount(before);
+    const player = await registerPlayer(before);
     await before.close();
 
     const during = await createTestApp({
@@ -3803,12 +3795,12 @@ describe('auth: rotacja kluczy podpisu (e2e)', () => {
       const jwks = (await during.publicHttp().get('/.well-known/jwks.json').expect(200)).body;
       expect(jwks.keys.map((k: { kid: string }) => k.kid).sort()).toEqual([k1.kid, k2.kid].sort());
       await expect(
-        jwtVerify(account.accessToken, createLocalJWKSet(jwks), { audience: 'islanders-worlds' }),
+        jwtVerify(player.accessToken, createLocalJWKSet(jwks), { audience: 'islanders-worlds' }),
       ).resolves.toBeDefined();
       const fresh = await during
         .publicHttp()
         .post('/v1/auth/login')
-        .send({ email: account.email, password: account.password })
+        .send({ email: player.email, password: player.password })
         .expect(200);
       const header = JSON.parse(Buffer.from(fresh.body.accessToken.split('.')[0], 'base64url').toString());
       expect(header.kid).toBe(k2.kid);
@@ -3820,7 +3812,7 @@ describe('auth: rotacja kluczy podpisu (e2e)', () => {
     try {
       const jwks = (await after.publicHttp().get('/.well-known/jwks.json').expect(200)).body;
       await expect(
-        jwtVerify(account.accessToken, createLocalJWKSet(jwks), { audience: 'islanders-worlds' }),
+        jwtVerify(player.accessToken, createLocalJWKSet(jwks), { audience: 'islanders-worlds' }),
       ).rejects.toThrow();
     } finally {
       await after.close();
@@ -3857,18 +3849,18 @@ export async function withCliContext<T>(fn: (app: INestApplicationContext) => Pr
   }
 }
 ```
-`apps/auth/src/cli/accounts.ts`:
+`apps/auth/src/cli/players.ts`:
 ```ts
 import { parseArgs } from 'node:util';
 import type { Role } from '@islanders/contracts';
-import { AccountsAdmin } from '../accounts/accounts-admin.js';
+import { PlayersAdmin } from '../players/players-admin.js';
 import { withCliContext } from './cli-context.js';
 
 const USAGE = `Użycie:
-  npm run account:roles -w apps/auth -- --email <e> [--add <rola>]... [--remove <rola>]...
-  npm run account:set-password -w apps/auth -- --email <e>     (hasło ze stdin)
-  npm run account:disable -w apps/auth -- --email <e>
-  npm run account:enable -w apps/auth -- --email <e>`;
+  npm run player:roles -w apps/auth -- --email <e> [--add <rola>]... [--remove <rola>]...
+  npm run player:set-password -w apps/auth -- --email <e>     (hasło ze stdin)
+  npm run player:disable -w apps/auth -- --email <e>
+  npm run player:enable -w apps/auth -- --email <e>`;
 
 const [command, ...rest] = process.argv.slice(2);
 const { values } = parseArgs({
@@ -3894,7 +3886,7 @@ const email = values.email;
 
 try {
   await withCliContext(async (app) => {
-    const admin = app.get(AccountsAdmin);
+    const admin = app.get(PlayersAdmin);
     switch (command) {
       case 'roles':
         console.log(`Role: ${(await admin.changeRoles(email, values.add as Role[], values.remove as Role[])).join(', ')}`);
@@ -3952,7 +3944,7 @@ cd ../..
 ```bash
 npm test && npm run test:e2e && npm run lint
 git add -A
-git commit -m "Add roles, account blocking, tools login and account and key CLI to the auth service"
+git commit -m "Add roles, player blocking, tools login and player and key CLI to the auth service"
 ```
 
 ---
@@ -3972,10 +3964,10 @@ git commit -m "Add roles, account blocking, tools login and account and key CLI 
 - Consumes: `TokenIssuer.service`, `TokenVerifier.verify` (Task 7), `worldRegistrationSchema`, `worldSlugSchema`, `slugFromServiceSubject`, `WorldListItem`, `Role` (Task 5).
 - Produces:
   - `ZodPipe(schema)` — `PipeTransform`, 400 z listą błędów
-  - `AccessTokenGuard` (ustawia `req.account: { id: string; roles: Role[] }` i `req.rateLimitSubject`), `ServiceTokenGuard` (ustawia `req.serviceWorldSlug: string`), dekoratory `CurrentAccount()`, `CurrentServiceWorld()`
+  - `AccessTokenGuard` (ustawia `req.player: { id: string; roles: Role[] }` i `req.rateLimitSubject`), `ServiceTokenGuard` (ustawia `req.serviceWorldSlug: string`), dekoratory `CurrentPlayer()`, `CurrentServiceWorld()`
   - `serviceClientEntrySchema`, `type ServiceClientEntry = { clientId: string; secretSha256: string; worldSlug: string }`, `parseServiceClients(entries: unknown[]): ServiceClientEntry[]`, `SERVICE_CLIENTS: symbol`, `ServiceClients.authenticate(clientId: string, secret: string): ServiceClientEntry | null`
   - `generateServiceClient(worldSlug: string): { clientId: string; secret: string; entry: ServiceClientEntry }`
-  - `WorldsRepository.upsert(slug: string, registration: WorldRegistration, now: Date): Promise<void>`, `.find(slug): Promise<WorldRow | undefined>`, `.listVisible(accountId: string, includeTest: boolean): Promise<WorldListItem[]>`, `.setStatus(client, slug, status, now)`, `.listAll(): Promise<WorldRow[]>`, `.setReachable(slug, reachable, now)`; `type WorldRow`
+  - `WorldsRepository.upsert(slug: string, registration: WorldRegistration, now: Date): Promise<void>`, `.find(slug): Promise<WorldRow | undefined>`, `.listVisible(playerId: string, includeTest: boolean): Promise<WorldListItem[]>`, `.setStatus(client, slug, status, now)`, `.listAll(): Promise<WorldRow[]>`, `.setReachable(slug, reachable, now)`; `type WorldRow`
   - test: `testServiceClients: { world1: { clientId; secret }, world2: { clientId; secret } }`, `serviceClientsEnv(): string`, `serviceToken(t, client): Promise<string>`, `registerWorld(t, slug, overrides?)`
 
 - [ ] **Step 1: Test klientów serwisowych (failing)**
@@ -4118,14 +4110,14 @@ import {
 import { slugFromServiceSubject, type Role } from '@islanders/contracts';
 import { TokenVerifier } from './token-verifier.js';
 
-export interface AccountPrincipal {
+export interface PlayerPrincipal {
   id: string;
   roles: Role[];
 }
 
 interface AuthRequest {
   headers: { authorization?: string };
-  account?: AccountPrincipal;
+  player?: PlayerPrincipal;
   serviceWorldSlug?: string;
   rateLimitSubject?: string;
 }
@@ -4145,8 +4137,8 @@ export class AccessTokenGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<AuthRequest>();
     const claims = await this.verifier.verify(bearerToken(req), 'worlds');
-    req.account = { id: claims.sub, roles: claims.roles };
-    req.rateLimitSubject = `account:${claims.sub}`;
+    req.player = { id: claims.sub, roles: claims.roles };
+    req.rateLimitSubject = `player:${claims.sub}`;
     return true;
   }
 }
@@ -4164,9 +4156,9 @@ export class ServiceTokenGuard implements CanActivate {
   }
 }
 
-export const CurrentAccount = createParamDecorator(
-  (_: unknown, ctx: ExecutionContext): AccountPrincipal =>
-    ctx.switchToHttp().getRequest<AuthRequest>().account!,
+export const CurrentPlayer = createParamDecorator(
+  (_: unknown, ctx: ExecutionContext): PlayerPrincipal =>
+    ctx.switchToHttp().getRequest<AuthRequest>().player!,
 );
 
 export const CurrentServiceWorld = createParamDecorator(
@@ -4243,10 +4235,10 @@ export class ServiceClientsModule {}
 `apps/auth/src/worlds/worlds.repository.ts`:
 ```ts
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, ne, sql } from 'drizzle-orm';
 import type { WorldListItem, WorldRegistration, WorldStatus } from '@islanders/contracts';
 import { DB, type AuthDb, type AuthDbClient } from '../db/db.js';
-import { worldMemberships, worlds } from '../db/schema/index.js';
+import { profiles, worlds } from '../db/schema/index.js';
 
 export type WorldRow = typeof worlds.$inferSelect;
 
@@ -4281,7 +4273,7 @@ export class WorldsRepository {
     return this.db.select().from(worlds).orderBy(asc(worlds.slug));
   }
 
-  async listVisible(accountId: string, includeTest: boolean): Promise<WorldListItem[]> {
+  async listVisible(playerId: string, includeTest: boolean): Promise<WorldListItem[]> {
     const rows = await this.db
       .select({
         slug: worlds.slug,
@@ -4290,15 +4282,14 @@ export class WorldsRepository {
         status: worlds.status,
         isTest: worlds.isTest,
         reachable: worlds.reachable,
-        joined: sql<boolean>`${worldMemberships.accountId} IS NOT NULL`,
+        joined: sql<boolean>`${profiles.playerId} IS NOT NULL`,
       })
       .from(worlds)
       .leftJoin(
-        worldMemberships,
+        profiles,
         and(
-          eq(worldMemberships.worldSlug, worlds.slug),
-          eq(worldMemberships.accountId, accountId),
-          isNull(worldMemberships.leftAt),
+          eq(profiles.worldSlug, worlds.slug),
+          eq(profiles.playerId, playerId),
         ),
       )
       .where(and(ne(worlds.status, 'DRAFT'), includeTest ? undefined : eq(worlds.isTest, false)))
@@ -4321,7 +4312,7 @@ import { Controller, Get, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { WorldListItem } from '@islanders/contracts';
 import { RateLimitGuard } from '@islanders/platform';
-import { AccessTokenGuard, CurrentAccount, type AccountPrincipal } from '../tokens/guards.js';
+import { AccessTokenGuard, CurrentPlayer, type PlayerPrincipal } from '../tokens/guards.js';
 import { WorldsRepository } from './worlds.repository.js';
 
 @ApiTags('worlds')
@@ -4333,9 +4324,9 @@ export class WorldsController {
 
   /** Bez `DRAFT`; świat testowy tylko dla ról tester i admin. */
   @Get()
-  list(@CurrentAccount() account: AccountPrincipal): Promise<WorldListItem[]> {
-    const includeTest = account.roles.includes('tester') || account.roles.includes('admin');
-    return this.worlds.listVisible(account.id, includeTest);
+  list(@CurrentPlayer() player: PlayerPrincipal): Promise<WorldListItem[]> {
+    const includeTest = player.roles.includes('tester') || player.roles.includes('admin');
+    return this.worlds.listVisible(player.id, includeTest);
   }
 }
 ```
@@ -4490,8 +4481,8 @@ export async function registerWorld(
 
 `apps/auth/test/worlds.e2e-spec.ts`:
 ```ts
-import { AccountsAdmin } from '../src/accounts/accounts-admin.js';
-import { bearer, registerAccount, registerWorld, serviceToken } from './support/fixtures.js';
+import { PlayersAdmin } from '../src/players/players-admin.js';
+import { bearer, registerPlayer, registerWorld, serviceToken } from './support/fixtures.js';
 import { testServiceClients } from './support/service-clients.js';
 import { createTestApp, type TestApp } from './support/test-app.js';
 
@@ -4542,7 +4533,7 @@ describe('auth: klienci serwisowi i rejestr światów (e2e)', () => {
   });
 
   it('rejestr odrzuca token gracza i ciało niezgodne z kontraktem', async () => {
-    const a = await registerAccount(t);
+    const a = await registerPlayer(t);
     await t
       .internalHttp()
       .put('/internal/v1/worlds/world-1')
@@ -4558,7 +4549,7 @@ describe('auth: klienci serwisowi i rejestr światów (e2e)', () => {
   });
 
   it('gracz widzi otwarte światy bez DRAFT i bez testowych; tester widzi testowy', async () => {
-    const player = await registerAccount(t);
+    const player = await registerPlayer(t);
     const asPlayer = await listAs(player.accessToken);
     expect(asPlayer.body.map((w: { slug: string }) => w.slug)).toEqual(['world-1']);
     // `reachable` należy do sondy i zależy od innych plików e2e na tej samej bazie — tu tylko typ.
@@ -4575,8 +4566,8 @@ describe('auth: klienci serwisowi i rejestr światów (e2e)', () => {
     });
     expect(typeof asPlayer.body[0].reachable).toBe('boolean');
 
-    const tester = await registerAccount(t);
-    await t.app.get(AccountsAdmin).changeRoles(tester.email, ['tester'], []);
+    const tester = await registerPlayer(t);
+    await t.app.get(PlayersAdmin).changeRoles(tester.email, ['tester'], []);
     const login = await t
       .publicHttp()
       .post('/v1/auth/login')
@@ -4588,7 +4579,7 @@ describe('auth: klienci serwisowi i rejestr światów (e2e)', () => {
 
   it('ponowne zgłoszenie aktualizuje wpis', async () => {
     await registerWorld(t, world1, { name: 'Świat pierwszy', status: 'CLOSED' });
-    const player = await registerAccount(t);
+    const player = await registerPlayer(t);
     const res = await listAs(player.accessToken);
     expect(res.body[0]).toMatchObject({ slug: 'world-1', name: 'Świat pierwszy', status: 'CLOSED' });
     await registerWorld(t, world1);
@@ -4625,7 +4616,7 @@ git commit -m "Add service client credentials, the world registry and the world 
 - Modify: `apps/auth/src/app.module.ts`
 
 **Interfaces:**
-- Consumes: `ServiceTokenGuard`, `CurrentServiceWorld`, `ZodPipe`, `WorldsRepository.find|setStatus` (Task 9); `eventBatchSchema`, `WorldEvent` (Task 5); tabele `processedEvents`, `worldMemberships`.
+- Consumes: `ServiceTokenGuard`, `CurrentServiceWorld`, `ZodPipe`, `WorldsRepository.find|setStatus` (Task 9); `eventBatchSchema`, `WorldEvent` (Task 5); tabele `processedEvents`, `profiles`.
 - Produces: `EventsService.ingest(serviceWorld: string, events: WorldEvent[]): Promise<{ accepted: number; duplicates: number }>`; `POST /internal/v1/events` → `200 { accepted, duplicates }`, `403` gdy zdarzenie cudzego świata, `409` gdy świat spoza rejestru.
 
 - [ ] **Step 1: E2E zdarzeń (failing)**
@@ -4633,7 +4624,7 @@ git commit -m "Add service client credentials, the world registry and the world 
 `apps/auth/test/events.e2e-spec.ts`:
 ```ts
 import { randomUUID } from 'node:crypto';
-import { bearer, registerAccount, registerWorld, serviceToken } from './support/fixtures.js';
+import { bearer, registerPlayer, registerWorld, serviceToken } from './support/fixtures.js';
 import { testServiceClients } from './support/service-clients.js';
 import { createTestApp, type TestApp } from './support/test-app.js';
 
@@ -4650,22 +4641,25 @@ describe('auth: zdarzenia od światów (e2e)', () => {
   });
 
   const at = '2026-09-13T12:00:00.000Z';
-  const joined = (accountId: string, slug = 'world-1') => ({
+  const joined = (playerId: string, slug = 'world-1') => ({
     type: 'PlayerJoinedWorld',
     eventId: randomUUID(),
     worldSlug: slug,
     occurredAt: at,
-    accountId,
+    playerId,
     joinedAt: at,
   });
-  const left = (accountId: string) => ({
-    type: 'PlayerLeftWorld',
+  const statusChanged = (status: string) => ({
+    type: 'WorldStatusChanged',
     eventId: randomUUID(),
     worldSlug: 'world-1',
     occurredAt: at,
-    accountId,
-    leftAt: '2026-09-13T13:00:00.000Z',
+    status,
   });
+  const worldStatus = async (token: string) => {
+    const res = await t.publicHttp().get('/v1/worlds').set('Authorization', bearer(token)).expect(200);
+    return res.body.find((w: { slug: string }) => w.slug === 'world-1').status;
+  };
   const send = async (client: typeof world1, events: object[]) =>
     t
       .internalHttp()
@@ -4677,40 +4671,38 @@ describe('auth: zdarzenia od światów (e2e)', () => {
     return res.body.find((w: { slug: string }) => w.slug === 'world-1').joined;
   };
 
-  it('PlayerJoinedWorld ustawia joined; PlayerLeftWorld je zdejmuje', async () => {
-    const a = await registerAccount(t);
+  it('PlayerJoinedWorld ustawia joined; powtórne dołączenie tego samego gracza niczego nie psuje', async () => {
+    const a = await registerPlayer(t);
     expect(await joinedFlag(a.accessToken)).toBe(false);
-    expect((await send(world1, [joined(a.accountId)])).body).toMatchObject({ accepted: 1, duplicates: 0 });
+    expect((await send(world1, [joined(a.playerId)])).body).toMatchObject({ accepted: 1, duplicates: 0 });
     expect(await joinedFlag(a.accessToken)).toBe(true);
-    await send(world1, [left(a.accountId)]).then((r) => expect(r.status).toBe(200));
-    expect(await joinedFlag(a.accessToken)).toBe(false);
-  });
-
-  it('ta sama partia wysłana dwa razy zmienia stan raz', async () => {
-    const a = await registerAccount(t);
-    const batch = [joined(a.accountId), left(a.accountId)];
-    expect((await send(world1, batch)).body).toMatchObject({ accepted: 2, duplicates: 0 });
-    // Ponowne dołączenie nowym zdarzeniem, potem powtórka starej partii: stare „left” nie może go cofnąć.
-    await send(world1, [joined(a.accountId)]);
-    expect((await send(world1, batch)).body).toMatchObject({ accepted: 0, duplicates: 2 });
+    expect((await send(world1, [joined(a.playerId)])).body).toMatchObject({ accepted: 1, duplicates: 0 });
     expect(await joinedFlag(a.accessToken)).toBe(true);
   });
 
   it('WorldStatusChanged zmienia status w rejestrze', async () => {
-    const player = await registerAccount(t);
-    await send(world1, [
-      { type: 'WorldStatusChanged', eventId: randomUUID(), worldSlug: 'world-1', occurredAt: at, status: 'CLOSED' },
-    ]).then((r) => expect(r.status).toBe(200));
-    const res = await t.publicHttp().get('/v1/worlds').set('Authorization', bearer(player.accessToken)).expect(200);
-    expect(res.body.find((w: { slug: string }) => w.slug === 'world-1').status).toBe('CLOSED');
+    const a = await registerPlayer(t);
+    await send(world1, [statusChanged('CLOSED')]).then((r) => expect(r.status).toBe(200));
+    expect(await worldStatus(a.accessToken)).toBe('CLOSED');
     await registerWorld(t, world1);
   });
 
+  it('ta sama partia wysłana dwa razy zmienia stan raz', async () => {
+    const a = await registerPlayer(t);
+    const batch = [statusChanged('CLOSED'), joined(a.playerId)];
+    expect((await send(world1, batch)).body).toMatchObject({ accepted: 2, duplicates: 0 });
+    // Świat wraca do OPEN nowszym zgłoszeniem; powtórka starej partii nie może go znów zamknąć.
+    await registerWorld(t, world1);
+    expect((await send(world1, batch)).body).toMatchObject({ accepted: 0, duplicates: 2 });
+    expect(await worldStatus(a.accessToken)).toBe('OPEN');
+    expect(await joinedFlag(a.accessToken)).toBe(true);
+  });
+
   it('zdarzenie cudzego świata odrzuca całą partię (403), świat spoza rejestru daje 409', async () => {
-    const a = await registerAccount(t);
-    expect((await send(world1, [joined(a.accountId), joined(a.accountId, 'world-2')])).status).toBe(403);
+    const a = await registerPlayer(t);
+    expect((await send(world1, [joined(a.playerId), joined(a.playerId, 'world-2')])).status).toBe(403);
     expect(await joinedFlag(a.accessToken)).toBe(false);
-    expect((await send(world2, [joined(a.accountId, 'world-2')])).status).toBe(409);
+    expect((await send(world2, [joined(a.playerId, 'world-2')])).status).toBe(409);
   });
 
   it('nieznane konto: zdarzenie przyjęte jako przetworzone i pominięte, żeby nie blokować outboxa', async () => {
@@ -4732,16 +4724,15 @@ Expected: FAIL (404).
 `apps/auth/src/events/events.service.ts`:
 ```ts
 import { ConflictException, ForbiddenException, Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq, lte } from 'drizzle-orm';
 import type { WorldEvent } from '@islanders/contracts';
 import type { Clock } from '@islanders/domain/time';
 import { CLOCK, DB, isForeignKeyViolation } from '@islanders/platform';
 import type { AuthDb, AuthDbClient } from '../db/db.js';
-import { processedEvents, worldMemberships } from '../db/schema/index.js';
+import { processedEvents, profiles } from '../db/schema/index.js';
 import { WorldsRepository } from '../worlds/worlds.repository.js';
 
 /** Punkt zapisu wewnątrz transakcji zdarzenia — błąd klucza obcego cofa tylko zastosowanie, nie wpis o przetworzeniu. */
-class UnknownAccount extends Error {}
+class UnknownPlayer extends Error {}
 
 @Injectable()
 export class EventsService {
@@ -4777,7 +4768,7 @@ export class EventsService {
         try {
           await tx.transaction((sp) => this.apply(sp, event));
         } catch (err) {
-          if (!(err instanceof UnknownAccount)) throw err;
+          if (!(err instanceof UnknownPlayer)) throw err;
           this.logger.warn(`Zdarzenie ${event.eventId} (${event.type}) dotyczy nieznanego konta, pominięte`);
         }
         return true;
@@ -4796,36 +4787,21 @@ export class EventsService {
       case 'PlayerJoinedWorld':
         try {
           await tx
-            .insert(worldMemberships)
-            .values({ accountId: event.accountId, worldSlug: event.worldSlug, joinedAt: new Date(event.joinedAt) })
+            .insert(profiles)
+            .values({ playerId: event.playerId, worldSlug: event.worldSlug, joinedAt: new Date(event.joinedAt) })
             .onConflictDoUpdate({
-              target: [worldMemberships.accountId, worldMemberships.worldSlug],
-              set: { joinedAt: new Date(event.joinedAt), leftAt: null },
+              target: [profiles.playerId, profiles.worldSlug],
+              set: { joinedAt: new Date(event.joinedAt) },
             });
         } catch (err) {
-          if (isForeignKeyViolation(err)) throw new UnknownAccount();
+          if (isForeignKeyViolation(err)) throw new UnknownPlayer();
           throw err;
         }
-        return;
-      case 'PlayerLeftWorld':
-        // Odejście sprzed ostatniego dołączenia nie cofa dołączenia.
-        await tx
-          .update(worldMemberships)
-          .set({ leftAt: new Date(event.leftAt) })
-          .where(
-            and(
-              eq(worldMemberships.accountId, event.accountId),
-              eq(worldMemberships.worldSlug, event.worldSlug),
-              lte(worldMemberships.joinedAt, new Date(event.leftAt)),
-            ),
-          );
         return;
     }
   }
 }
 ```
-Uwaga do testu idempotencji: stara partia ma `joinedAt = 12:00` i `leftAt = 13:00`; nowe dołączenie ma też `joinedAt = 12:00`. Test przechodzi, bo powtórka jest pomijana w całości jako duplikat — warunek `lte` chroni dopiero przed odejściem dostarczonym z opóźnieniem jako nowe zdarzenie.
-
 `apps/auth/src/events/internal-events.controller.ts`:
 ```ts
 import { Body, Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
@@ -4875,7 +4851,7 @@ Expected: PASS.
 ```bash
 npm test && npm run test:e2e && npm run lint
 git add -A
-git commit -m "Accept idempotent world events and track world memberships in the auth service"
+git commit -m "Accept idempotent world events and mirror player profiles in the auth service"
 ```
 
 ---
@@ -4903,7 +4879,7 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { closeServer } from '@islanders/platform';
 import { WorldProbe } from '../src/probe/world-probe.js';
-import { bearer, registerAccount, registerWorld } from './support/fixtures.js';
+import { bearer, registerPlayer, registerWorld } from './support/fixtures.js';
 import { testServiceClients } from './support/service-clients.js';
 import { createTestApp, type TestApp } from './support/test-app.js';
 
@@ -4931,7 +4907,7 @@ describe('auth: sonda światów (e2e)', () => {
   });
 
   const reachable = async () => {
-    const a = await registerAccount(t);
+    const a = await registerPlayer(t);
     const res = await t.publicHttp().get('/v1/worlds').set('Authorization', bearer(a.accessToken)).expect(200);
     return res.body.find((w: { slug: string }) => w.slug === 'world-1').reachable;
   };
@@ -5226,14 +5202,14 @@ sleep 2
 curl -s localhost:3001/health/ready
 curl -s -X POST localhost:3000/v1/auth/register -H 'content-type: application/json' \
   -d '{"email":"tech@local.test","nickname":"technik","password":"haslo-testowe-123"}'
-node dist/cli/accounts.js roles --email tech@local.test --add admin
+node dist/cli/players.js roles --email tech@local.test --add admin
 curl -s localhost:3000/health/ready
 kill %1
 cd ../..
 ```
 Expected:
 - `/health/ready` na 3001: `{"status":"ok","db":"up","redis":"up",...}`
-- rejestracja: JSON z `accountId`, `roles:["player"]`
+- rejestracja: JSON z `playerId`, `roles:["player"]`
 - CLI: `Role: player, admin`
 - `/health/ready` na 3000: 404
 
@@ -5304,10 +5280,10 @@ w `apps/core/test/support/test-app.ts`.
 ## Auth — komendy technika
 
 ```bash
-npm run account:roles -w apps/auth -- --email <e> --add tester
-echo 'nowe-haslo' | npm run account:set-password -w apps/auth -- --email <e>
-npm run account:disable -w apps/auth -- --email <e>
-npm run account:enable -w apps/auth -- --email <e>
+npm run player:roles -w apps/auth -- --email <e> --add tester
+echo 'nowe-haslo' | npm run player:set-password -w apps/auth -- --email <e>
+npm run player:disable -w apps/auth -- --email <e>
+npm run player:enable -w apps/auth -- --email <e>
 npm run keys:generate -w apps/auth
 npm run client:create -w apps/auth -- --world world-1
 ```

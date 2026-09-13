@@ -20,12 +20,12 @@ Powody:
 
 ## Konsekwencje
 
-- Ban globalny i wylogowanie ze wszystkich urządzeń działają z opóźnieniem do 15 minut.
+- Blokada gracza i wylogowanie ze wszystkich urządzeń działają z opóźnieniem do 15 minut.
 - Rotacja kluczy: auth publikuje klucz nowy obok wycofywanego przez co najmniej czas życia
   access tokenu; core odświeża JWKS przy nieznanym `kid`.
-- `accountId` staje się uuid (dotąd `players.id serial`) — zmiana w kontrakcie klienta
+- `playerId` staje się uuid (dotąd `players.id serial`) — zmiana typu w kontrakcie klienta
   (`ownerId`).
-- Core przechowuje o koncie tylko `accountId` i kopię `nickname`; zmiana pseudonimu wymaga
+- Core przechowuje o koncie tylko `playerId` i kopię `nickname`; zmiana pseudonimu wymaga
   zdarzenia z auth do światów (poza MVP).
 
 ## Odrzucone alternatywy
