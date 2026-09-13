@@ -1,67 +1,93 @@
 # Islanders API — panel administracyjny (podgląd)
 
-Data: 2026-09-11
-Status: zatwierdzony w brainstormingu, czeka na plan implementacji
-Zależności: spec A (`2026-09-08-backend-foundation-geography-design.md`, wdrożony).
-Niezależny od specu B (`2026-09-11-settlement-economy-design.md`); sekcja 4.3 wskazuje,
-co dojdzie do panelu po jego wdrożeniu.
+Data: 2026-09-11, przepisany 2026-09-13 po przesłuchaniu
+Status: **wstrzymany.** Ustalenia zapisane, plan implementacji nie powstaje.
+Powód wstrzymania: API gry zmienia się pod nowe założenia, a panel czyta jego dane i
+przejmuje jego pojęcia, więc projekt panelu trzeba przejrzeć po tych zmianach.
+Zależności: spec A (wdrożony), spec B (`2026-09-11-settlement-economy-design.md`, w toku).
+Terminologia: `../islanders/CONTEXT.md`.
+
+## 0. Jak czytać ten dokument
+
+Pierwsza wersja specu (commit `9357f94`) zakładała panel renderowany po stronie serwera,
+bez JavaScriptu. Przesłuchanie zmieniło tę decyzję: panel jest aplikacją jednostronicową
+(SPA) w Vue. Dokument opisuje stan po tej zmianie i nie zachowuje wariantu serwerowego,
+bo nikt do niego nie wróci. Sekcja 10 wymienia pytania, na które nie ma jeszcze odpowiedzi.
 
 ## 1. Cel i zakres
 
-Prosty, deweloperski interfejs WWW do podglądu stanu gry: światów, graczy, osad i flot.
-Wyłącznie odczyt. Renderowany po stronie serwera jako HTML, bez JavaScriptu w przeglądarce,
-bez silnika szablonów i bez narzędzi do budowania frontendu.
+Deweloperskie narzędzie do podglądu stanu gry: światów, graczy, profili, osad, budynków,
+flot i mapy świata. Wyłącznie odczyt, żadnych akcji zmieniających stan.
 
 Panel istnieje tylko wtedy, gdy w `.env` jest ustawiony sekret `ADMIN_TOKEN`, i tylko poza
-`NODE_ENV=production`. Wejście wymaga podania tego sekretu w formularzu logowania.
+`NODE_ENV=production`. Sekret ma jedno zadanie: zamknąć dostęp z zewnątrz do serwera
+chodzącego lokalnie. Nie jest tokenem sesyjnym, nie rotuje się i nie wygasa.
 
-Poza zakresem tej wersji (zapisane, żeby nie wracać do dyskusji):
+Poza zakresem:
 
-- jakiekolwiek akcje zmieniające stan (status świata, tworzenie świata, edycja zasobów,
-  unieważnianie sesji graczy);
+- akcje zmieniające stan (status świata, tworzenie świata, edycja zasobów, unieważnianie
+  sesji graczy);
 - paginacja i filtrowanie list;
-- praca na produkcji za HTTPS (ciasteczko `Secure`, wygasanie sesji, limiter na panelu poza
-  formularzem logowania);
+- praca na produkcji;
 - rola administratora przypięta do konta gracza w bazie;
-- garnizon i kolejka zleceń osady, które powstają dopiero w specu B (sekcja 4.3).
+- tokeny odświeżające graczy — panel nie pokazuje ich w ogóle (sekcja 2, wiersz 7);
+- garnizon i kolejka zleceń osady do czasu wdrożenia specu B (sekcja 5.4).
 
-## 2. Rozstrzygnięcia, z których wynika reszta
+## 2. Rozstrzygnięcia
 
-| Pytanie | Decyzja | Konsekwencja |
-|---|---|---|
-| Kto ma dostęp | Flaga plus sekret w `.env`, sesja w ciasteczku | Brak ról w bazie, brak migracji, jeden „admin" |
-| Jak powstaje UI | HTML składany po stronie serwera funkcjami TypeScript | Zero JS w przeglądarce, testy przez supertest jak reszta API |
-| Co widać | Wyłącznie podgląd | Wszystkie trasy to `GET` poza logowaniem i wylogowaniem |
-| Gdzie działa | Tylko lokalnie / dev | `ADMIN_TOKEN` w `production` to błąd startu; ciasteczko bez `Secure` |
-| Skąd dane | Własne repozytorium odczytów w module admina | Repozytoria graczy nie dostają metod „dla admina" |
+Kolejność odpowiada kolejności rozstrzygania; każdy wiersz to decyzja podjęta świadomie,
+wraz z tym, co z niej wynika.
 
-Odrzucone alternatywy: statyczna mini‑aplikacja JS z osobnym JSON‑owym API (dwie warstwy do
-utrzymania), osobny projekt frontendowy z bundlerem (nowy toolchain w repozytorium backendu),
-osobny proces `admin.ts` ze wspólną bazą (drugi bootstrap i drugi port), rozszerzanie
-istniejących repozytoriów o metody admina (miesza reguły widoczności gracza z panelem).
+| # | Pytanie | Decyzja | Konsekwencja |
+|---|---|---|---|
+| 1 | Kto ma dostęp | Flaga i sekret w `.env`, bez ról w bazie | Brak migracji, jeden administrator |
+| 2 | Jak powstaje UI | **SPA w Vue 3** (zmiana wobec pierwszej wersji specu) | Backend wystawia JSON, widoki żyją w osobnym projekcie |
+| 3 | Co widać | Wyłącznie podgląd | Brak tras zapisujących |
+| 4 | Gdzie działa | Tylko lokalnie i w dev | `ADMIN_TOKEN` w `production` to błąd startu |
+| 5 | Skąd dane | Własne repozytorium odczytów w module admina | Repozytoria graczy nie dostają metod „dla admina” |
+| 6 | Słownictwo | Polskie nazwy ze słownika domeny | „konto” zastąpione przez „gracz”; etykiety polskie, nie nazwy kolumn |
+| 7 | Tokeny odświeżające graczy | Nie ma ich w panelu | Znika kolumna „aktywne tokeny” i tabela tokenów |
+| 8 | E‑mail gracza | Pokazywany bez maskowania | Odróżnianie kont testowych; maskowanie byłoby pozorne |
+| 9 | Floty rozstrzygnięte | Dwie osobne tabele: w drodze i historia przybyć | Historia to dziennik, nie floty (sekcja 5.2) |
+| 10 | Historia przybyć | Ostatnie 50, tylko w szczegółach świata | Szczegóły gracza pokazują wyłącznie floty w drodze |
+| 11 | Osada domowa bez osady | Panel sprawdza i wypisuje niezgodność | Bez klucza obcego baza tego nie wyłapie (sekcja 5.1) |
+| 12 | Geografia | Pełna mapa świata z zoomem | Nowy ekran mapy, dane z seeda (sekcje 6–7) |
+| 13 | Framework | Vue 3, Vite, Tailwind 4, TypeScript, bez Inertii | Zgodne ze stosem `Filaments-backend` |
+| 14 | Gdzie kod | `admin-ui/` z własnym `package.json` | Zależności frontendu nie wchodzą do drzewa serwera |
+| 15 | Serwowanie | Nest serwuje `admin-ui/dist` pod `/admin`; `dist` nie idzie do gita | `npm run admin:build`; w dev Vite na 5173 z proxy |
+| 16 | Uwierzytelnienie | Token w nagłówku `Authorization`, trzymany w `localStorage` | Brak ciasteczka i HMAC; `GET /admin/api/session` sprawdza token |
+| 17 | Kształt API | Jeden endpoint na ekran | Payload dopasowany do widoku, jeden test na endpoint |
+| 18 | Dane mapy | Jedno żądanie na świat, `ETag` i `immutable` | Zoom i przesuwanie bez żądań |
+| 19 | Rysowanie mapy | Canvas 2D, własny zoom i przesuwanie | Bez biblioteki mapowej; skaluje się na większe światy |
+| 20 | Warstwy mapy | Biomy, osady, znaleziska; podpowiedź i panel boczny; floty domyślnie wyłączone | Sekcja 7 |
+| 21 | Testy panelu | Playwright w przeglądarce | Sekcja 9 |
+| 22 | Orkiestracja testów | Jedna komenda z Testcontainers i zasianymi danymi, Chromium bez okna | Asercje mogą być dokładne |
+| 23 | Miejsce API | `/admin/api/*` poza prefiksem `api/v1`, wykluczone ze Swaggera | Panel nie wchodzi do kontraktu gry |
 
-## 3. Konfiguracja i włączanie
+Odrzucone warianty warte zapamiętania: HTML renderowany po stronie serwera (odrzucony
+dopiero na etapie mapy z zoomem), React 19 (obecny w innych projektach, ale Vue jest
+świeższy w rękach), osobne repozytorium panelu, geografia liczona w przeglądarce przez
+import `src/domain/geography` (odrzucona, żeby nie liczyć jej w dwóch miejscach), SVG
+zamiast canvasu, biblioteka mapowa, `Administrator` jako termin w słowniku domeny
+(odrzucony, bo to mechanizm dostępu, a nie pojęcie gry).
 
-### 3.1 Zmienna środowiskowa
+## 3. Konfiguracja
 
-Jedna nowa zmienna w `env.ts`:
+Jedna nowa zmienna w `src/infra/config/env.ts`:
 
 | Zmienna | Typ | Reguła |
 |---|---|---|
-| `ADMIN_TOKEN` | string, opcjonalna | Gdy ustawiona: minimum 16 znaków. Gdy ustawiona przy `NODE_ENV=production`: błąd walidacji `EnvValidationError` z komunikatem, że panel jest narzędziem deweloperskim |
+| `ADMIN_TOKEN` | string, opcjonalna | Gdy ustawiona: minimum 16 znaków. Gdy ustawiona przy `NODE_ENV=production`: `EnvValidationError` z komunikatem, że panel jest narzędziem deweloperskim |
 
-Transformacja schematu dodaje pole wyliczone `ADMIN_ENABLED: boolean`, prawdziwe wtedy i tylko
+Transformacja schematu dodaje wyliczone `ADMIN_ENABLED: boolean`, prawdziwe wtedy i tylko
 wtedy, gdy `ADMIN_TOKEN` jest ustawiony. Sekret jest jednocześnie flagą: nie da się włączyć
-panelu bez sekretu ani zostawić sekretu „na zapas" bez włączenia panelu.
+panelu bez sekretu ani zostawić sekretu bez włączenia panelu.
 
-`.env.example` dostaje wpis z komentarzem (domyślnie zakomentowany, żeby świeża kopia nie
-włączała panelu) i podpowiedzią generowania: `openssl rand -base64 24`.
+`.env.example` dostaje zakomentowany wpis z podpowiedzią `openssl rand -base64 24`, żeby
+świeża kopia pliku nie włączała panelu.
 
-### 3.2 Rejestracja modułu
-
-`AppModule.forRoot(env)` importuje `AdminModule` wyłącznie gdy `env.ADMIN_ENABLED`. Przy
-wyłączonym panelu trasy `/admin/*` nie są w ogóle zarejestrowane, więc odpowiadają 404 tak jak
-każda nieistniejąca ścieżka, a nie „istnieją i odmawiają".
+`AppModule.forRoot(env)` importuje `AdminModule` wyłącznie gdy `env.ADMIN_ENABLED`; przy
+wyłączonym panelu trasy `/admin/*` nie istnieją i dają 404, a nie „istnieją i odmawiają”.
 
 `configureApp` wyklucza panel z globalnego prefiksu:
 
@@ -69,176 +95,184 @@ każda nieistniejąca ścieżka, a nie „istnieją i odmawiają".
 app.setGlobalPrefix('api/v1', { exclude: ['admin', 'admin/{*path}'] });
 ```
 
-Wykluczenie jest bezwarunkowe (nie zależy od `ADMIN_ENABLED`), bo dotyczy tylko dopasowania
-prefiksu, a przy wyłączonym module nie ma czego dopasować. Test e2e sprawdza, że `/api/v1/health`
-działa w obu konfiguracjach.
+Wykluczenie jest bezwarunkowe: dotyczy tylko dopasowania prefiksu, a bez modułu nie ma czego
+dopasować. Test e2e sprawdza, że `/api/v1/health` działa w obu konfiguracjach.
 
-## 4. Powierzchnia HTTP
+## 4. Uwierzytelnienie
 
-### 4.1 Uwierzytelnienie
+Token jedzie w nagłówku `Authorization: Bearer <ADMIN_TOKEN>` przy każdym żądaniu do
+`/admin/api/*`. Panel po wpisaniu sekretu w ekranie logowania zapisuje go w `localStorage`
+i dokłada do każdego żądania.
 
-| Metoda i trasa | Zachowanie |
+- `AdminGuard` porównuje nagłówek z `ADMIN_TOKEN` przez `timingSafeEqual` na buforach równej
+  długości; różna długość to odrzucenie bez porównywania. Brak lub zły token: 401 z JSON‑em.
+- `GET /admin/api/session` nie zwraca nic poza `{ ok: true }`. Panel woła ją przy starcie,
+  żeby sprawdzić zapamiętany token, i na podstawie 200 albo 401 decyduje, czy pokazać
+  ekran logowania.
+- Wylogowanie to wyczyszczenie `localStorage` w przeglądarce; serwer nie ma czego unieważniać.
+- Trasy panelu są `@Public()` (wyłączają globalny `JwtAuthGuard`) i `@ApiExcludeController()`.
+
+Świadoma konsekwencja: sekret jest dostępny JavaScriptowi panelu i leży w pamięci
+przeglądarki. Przy panelu deweloperskim na localhoście to akceptowalne; gdyby panel miał
+kiedyś stanąć na produkcji, wraca ciasteczko `HttpOnly` (odrzucony wariant z pierwszej wersji).
+
+## 5. Ekrany danych
+
+Wszystkie dane przez `/admin/api/*`, jeden endpoint na ekran. Etykiety po polsku, zgodnie ze
+słownikiem: świat, gracz, profil, osada, flota, budynek, zasób, pseudonim, osada domowa.
+Czasy w ISO 8601 UTC, jak w API gry. Listy bez paginacji, sortowane rosnąco po identyfikatorze.
+
+### 5.1 Światy i gracze
+
+| Endpoint | Ekran |
 |---|---|
-| `GET /admin/login` | Formularz z jednym polem `token` typu `password` i przyciskiem. Gdy sesja już jest ważna: 303 na `/admin` |
-| `POST /admin/login` | Ciało `application/x-www-form-urlencoded` z polem `token`. Porównanie z `ADMIN_TOKEN` przez `timingSafeEqual` na buforach równej długości (różna długość = odrzucenie bez porównania). Sukces: ciasteczko sesji i 303 na `/admin`. Porażka: ten sam formularz z komunikatem „Nieprawidłowy token", status 401 |
-| `POST /admin/logout` | Czyści ciasteczko (`Max-Age=0`) i 303 na `/admin/login` |
+| `GET /admin/api/worlds` | Lista światów: id, seed, szerokość × wysokość, wiatr, status, liczba profili, liczba osad, utworzono |
+| `GET /admin/api/worlds/:id` | Świat: pola świata, profile (gracz, osada domowa, dołączył), osady (pozycja, nazwa, właściciel, biom, populacja, zasoby, ostatnia synchronizacja, założona), floty w drodze, historia przybyć (50) |
+| `GET /admin/api/worlds/:id/settlements/:x/:y` | Osada: właściciel, biom, zasoby „w bazie” i „teraz”, pojemność, produkcja na godzinę, populacja i limit, budynki z poziomami |
+| `GET /admin/api/players` | Lista graczy: id, pseudonim, e‑mail, zarejestrowany, liczba profili |
+| `GET /admin/api/players/:id` | Gracz: pola konta, profile (świat, osada domowa, dołączył), osady na wszystkich światach, floty w drodze |
 
-Ciasteczko `admin_session`: wartość `HMAC-SHA256(klucz = ADMIN_TOKEN, wiadomość = "admin-session")`
-w zapisie hex; atrybuty `HttpOnly`, `SameSite=Lax`, `Path=/admin`, bez `Max-Age` (sesyjne,
-znika z zamknięciem przeglądarki). Bez stanu w bazie: zmiana `ADMIN_TOKEN` w `.env` unieważnia
-wszystkie sesje. Guard porównuje wartość z nagłówka `Cookie` z oczekiwaną przez `timingSafeEqual`.
+Osada domowa profilu jest sprawdzana: gdy pod `home_x, home_y` nie ma osady, pole niesie
+informację „brak osady pod (x, y)”; gdy osada jest, ale należy do innego gracza, „należy do
+innego gracza”. Link do ekranu osady tylko wtedy, gdy jedno i drugie się zgadza. `profiles`
+nie ma klucza obcego do `settlements`, więc to jedyne miejsce, które taki rozjazd wyłapie.
 
-Nagłówek `Cookie` parsujemy własną funkcją `parseCookies(header)` (podział po `;` i pierwszym
-`=`, `decodeURIComponent` wartości, błędy dekodowania traktowane jak brak ciasteczka). Nie
-dodajemy `cookie-parser`; ustawianie ciasteczka robi wbudowane `res.cookie` Expressa 5.
+Wartości wyliczone (zasoby „teraz”, pojemność, produkcja, limit populacji) liczy `ownView`
+z `src/modules/settlements/settlement-views.ts` z czasem z `Clock` wstrzykiwanego przez
+`CLOCK`. Panel nie liczy niczego sam; rozjazd panelu z API oznaczałby błąd w danych.
 
-`POST /admin/login` dostaje `@RateLimit('ip')` z istniejącego `RateLimitGuard` (limit
-`RATE_LIMIT_AUTH_PER_MINUTE`, ten sam co `/auth/*`). Pozostałe trasy panelu nie ustawiają
-`req.playerId` i nie mają jawnego klucza, więc limiter przepuszcza je bez zmian w jego kodzie.
+### 5.2 Floty w drodze a historia przybyć
 
-Kontroler jest oznaczony `@Public()` (wyłącza globalny `JwtAuthGuard`) i `@UseGuards(AdminSessionGuard)`.
-Logowanie i wylogowanie są wyłączone spod guarda własną metadaną `@AdminAnonymous()`.
-Brak lub zła sesja na chronionej trasie: guard rzuca `UnauthorizedException`, a filtr z sekcji 6
-zamienia to na 303 do `/admin/login`.
+Słownik mówi, że flota po przybyciu przestaje istnieć, a ewentualny powrót to nowa flota.
+Baza jednak nie usuwa wiersza, tylko wypełnia `resolved_at`. Panel oddziela te dwa byty:
 
-### 4.2 Widoki
+- **Floty** to wiersze z `resolved_at IS NULL`. Tabela pokazuje misję, właściciela, trasę,
+  wypłynięcie i przybycie.
+- **Historia przybyć** to ostatnie 50 wierszy z wypełnionym `resolved_at`, malejąco po
+  `arrive_at`, wyłącznie w szczegółach świata. To dziennik zdarzeń, nie floty, i panel nie
+  nazywa go flotami.
 
-Wszystkie `GET`, każdy zwraca pełny dokument HTML ze wspólnym układem: nagłówek z nawigacją
-(Światy, Gracze, Wyloguj), arkusz stylów inline (kilkadziesiąt linii, tabele z obramowaniem,
-czytelna czcionka systemowa), bez zewnętrznych zasobów i bez JS. Czasy w ISO 8601 UTC, jak w API.
-Listy bez paginacji, posortowane rosnąco po identyfikatorze.
+### 5.3 Repozytorium
 
-| Trasa | Zawartość |
-|---|---|
-| `GET /admin` | 303 na `/admin/worlds` |
-| `GET /admin/worlds` | Tabela światów: id (link), seed, szerokość × wysokość, wiatr `(x, y)`, status, liczba profili, liczba osad, `created_at` |
-| `GET /admin/worlds/:id` | Nagłówek z polami świata. Tabela profili: gracz (nick, link do gracza), osada domowa (`x, y`, link do osady; „brak" gdy `NULL`), `joined_at`. Tabela osad: pozycja (link), nazwa, właściciel (nick, link), biom, populacja, pięć zasobów przechowywanych, `last_sync_at`, `founded_at`. Tabela flot: id, misja, właściciel (nick, link), `from → to`, `depart_at`, `arrive_at`, `resolved_at` („w drodze" gdy `NULL`) |
-| `GET /admin/worlds/:id/settlements/:x/:y` | Nagłówek: nazwa, świat (link), pozycja, właściciel (link), biom, `founded_at`, `last_sync_at`. Sekcja zasobów: tabela z wierszem na zasób i kolumnami „w bazie" (surowa wartość) i „teraz" (wyliczona), plus pojemność, produkcja na godzinę i populacja. Tabela budynków: typ, poziom |
-| `GET /admin/players` | Tabela graczy: id (link), nick, e‑mail, `created_at`, liczba profili, liczba aktywnych tokenów odświeżających (nieunieważnione i niewygasłe na moment żądania) |
-| `GET /admin/players/:id` | Nagłówek konta (id, nick, e‑mail, `created_at`). Tabela profili: świat (link), osada domowa (link lub „brak"), `joined_at`. Tabela osad gracza na wszystkich światach (jak w widoku świata, plus kolumna świata). Tabela flot gracza. Tabela tokenów odświeżających: id, `created_at`, `expires_at`, `revoked_at`, `replaced_by_id`; skrótu tokenu nie pokazujemy |
+`AdminRepository` ma jedną metodę na ekran (`listWorlds`, `worldDetail`, `settlementDetail`,
+`listPlayers`, `playerDetail`, `worldMap`). Zliczenia robi SQL przez `count()` z `GROUP BY`
+albo podzapytania, pseudonimy właścicieli przez `JOIN`; żadnych zapytań w pętli po wierszach.
+Metody szczegółów zwracają `undefined`, gdy encji nie ma, a kontroler zamienia to na 404.
+Wyłącznie `SELECT`.
 
-Wartości wyliczone w szczegółach osady liczy `ownView` z `src/modules/settlements/settlement-views.ts`
-(czysta funkcja: zasoby „teraz", pojemność, produkcja na godzinę) z `now` pobranym z `Clock`
-wstrzykiwanego przez `CLOCK`. Panel nie liczy niczego sam; jeśli klient i API widzą inne liczby
-niż panel, błąd jest w danych, nie w panelu.
+### 5.4 Miejsce na spec B
 
-### 4.3 Miejsce na spec B
+Po wdrożeniu specu B ekran osady dostaje garnizon (`military_type`, liczba) i kolejkę zleceń
+(rodzaj, pozycja, ładunek, koszt, start, koniec, rozstrzygnięcie). To dwa zapytania i dwie
+sekcje widoku; nic w tym specu nie musi się zmienić.
 
-Po wdrożeniu specu B widok osady dostanie dwie tabele: garnizon (`military_type`, liczba) i
-kolejka zleceń (rodzaj, pozycja, ładunek, koszt, `started_at`, `finish_at`, `resolved_at`).
-Wymaga to jedynie dwóch dodatkowych zapytań w repozytorium i dwóch sekcji w widoku; nic w tym
-specu nie musi się zmienić. Do tego czasu sekcje po prostu nie istnieją.
+## 6. Dane mapy
 
-## 5. Struktura modułu
+`GET /admin/api/worlds/:id/map` zwraca komplet dla jednego świata:
+
+- wyspy policzone z seeda funkcjami `src/domain/geography`: współrzędne, biom, promień,
+  znalezisko;
+- nakładkę z bazy: osady (pozycja, nazwa, właściciel) i pobrane znaleziska
+  (`deposits_taken`).
+
+Pomiar na świecie 200 × 200: 40 000 komórek, 6063 wyspy (15,2%), 1802 ze znaleziskiem,
+22 ms na policzenie całej mapy. Odpowiedź waży poniżej pół megabajta.
+
+Geografia świata nigdy się nie zmienia, więc odpowiedź dostaje `ETag` i `Cache-Control:
+immutable`. Zoom i przesuwanie nie generują żadnych żądań. Ostrożność: część nakładki
+(osady, pobrane znaleziska) zmienia się w czasie, więc `ETag` musi zależeć także od niej
+albo nakładka musi jechać osobnym, niecache'owanym żądaniem. Do rozstrzygnięcia przy
+wznowieniu prac (sekcja 10).
+
+## 7. Ekran mapy
+
+Canvas 2D, zoom kółkiem, przesuwanie przeciąganiem, przeliczanie ekran ↔ świat własnym kodem.
+
+Warstwy przełączane polami wyboru:
+
+1. **Biomy** — kolor wyspy na tle morza. Podkład, zawsze włączony.
+2. **Osady** — znaczniki na wyspach z osadą.
+3. **Znaleziska** — małe kropki na wyspach niczyich ze znaleziskiem.
+4. **Floty w drodze** — linie ze strzałką od źródła do celu. Domyślnie wyłączona.
+
+Najechanie kursorem pokazuje podpowiedź: współrzędne, biom, a dla osady nazwę i pseudonim
+właściciela. Kliknięcie otwiera panel boczny ze szczegółami komórki i linkiem do ekranu osady.
+
+## 8. Projekt frontendu
 
 ```
-src/modules/admin/
-  admin.module.ts            rejestruje kontroler, guard, filtr, repozytorium
-  admin.controller.ts        trasy z sekcji 4; metody zwracają string albo przekierowują
-  admin-session.guard.ts     czyta Cookie, porównuje z oczekiwaną wartością, rzuca 401
-  admin-session.ts           czyste funkcje: sessionValue(token), parseCookies(header),
-                             tokenMatches(given, expected); bez Nest i bez Express
-  admin-anonymous.decorator.ts  metadana wyłączająca guard dla login/logout
-  admin.repository.ts        odczyty Drizzle, wyłącznie SELECT
-  admin-html.filter.ts       filtr wyjątków kontrolera (sekcja 6)
-  views/
-    html.ts                  tag `html` z escapowaniem, `raw()`, formatowanie dat i liczb
-    layout.ts                dokument, nawigacja, style
-    login.ts, worlds.ts, world.ts, settlement.ts, players.ts, player.ts, error.ts
+admin-ui/
+  package.json          własne zależności: vue, vue-router, vite, tailwindcss, vitest
+  vite.config.ts        proxy /admin/api -> http://localhost:3000 w dev
+  index.html
+  src/
+    main.ts, App.vue, router.ts
+    api.ts              fetch z nagłówkiem Authorization, obsługa 401
+    views/              Login, Worlds, World, Settlement, Players, Player, Map
+    map/                canvas: rysowanie, zoom, przeliczanie współrzędnych (czyste funkcje)
+    components/         tabele, panel boczny, przełączniki warstw
 ```
 
-Zasady:
+Backend serwuje `admin-ui/dist` pod `/admin` (statycznie, z przekierowaniem nieznanych
+ścieżek na `index.html`, bo router SPA używa ścieżek). `dist` nie jest commitowany; brak
+builda daje krótką stronę z instrukcją `npm run admin:build`. W korzeniu dochodzą skrypty
+`admin:build` i `admin:dev`.
 
-- **Repozytorium** ma jedną metodę na widok: `listWorlds()`, `worldDetail(id)`,
-  `settlementDetail(worldId, x, y)`, `listPlayers(now)`, `playerDetail(id)`. Zliczenia
-  (profile, osady, aktywne tokeny) robi SQL przez `count()` z `GROUP BY` albo podzapytania;
-  nicki właścicieli przy osadach i flotach pochodzą z JOIN‑ów. Żadnych zapytań w pętli po
-  wierszach. Zwraca zwykłe obiekty z nazwanymi polami; widoki nie importują Drizzle.
-  Metody szczegółów zwracają `undefined`, gdy encja nie istnieje; kontroler zamienia to na
-  `NotFoundException`.
-- **Widoki** to funkcje `(dane) => string`. Tag `html` escapuje każdą interpolację
-  (`& < > " '`); surowy HTML wchodzi wyłącznie przez jawne `raw(...)`, używane tylko do
-  składania fragmentów już zbudowanych tym samym tagiem. To jedyna ochrona przed wstrzyknięciem
-  i musi być kompletna, bo nicki i nazwy osad pochodzą od graczy.
-- **Kontroler** ma `@Header('Content-Type', 'text/html; charset=utf-8')` na klasie.
-  `ServerTimeInterceptor` dopisuje `serverTime` tylko do odpowiedzi‑obiektów, więc stringi
-  przechodzą bez zmian. Przekierowania robi `@Redirect` albo `res.redirect(303, ...)`
-  z `@Res({ passthrough: true })` tam, gdzie trzeba jednocześnie ustawić ciasteczko.
-- **Parametry ścieżki** przechodzą przez `ParseIntPipe({ errorHttpStatusCode: 404 })`, jak
-  w kontrolerze światów. Ciało logowania to DTO z `class-validator` (`token: string`), żeby
-  globalny `ValidationPipe` z `forbidNonWhitelisted` nie odrzucał formularza z powodu
-  nieznanych pól, a zarazem nie przepuszczał czegokolwiek innego.
-- Formularze wymagają `express.urlencoded`; Nest rejestruje ten parser domyślnie
-  (`bodyParser: true`), więc nic nie dochodzi.
+## 9. Testy
 
-## 6. Obsługa błędów
+- **Backend, jednostkowe:** `ADMIN_TOKEN` w `env.spec.ts` (brak, za krótki, w `production`,
+  poprawny), porównanie tokenu w strażniku (odrzuca inną długość bez rzucania).
+- **Backend, e2e (supertest):** każdy endpoint `/admin/api/*` bez tokenu → 401, ze złym → 401,
+  z dobrym → 200 z oczekiwanym kształtem; nieistniejący świat, gracz i osada → 404; osada
+  domowa wskazująca w pustkę → pole z niezgodnością; historia przybyć obcięta do 50;
+  `/api/v1/health` działa z panelem i bez niego; aplikacja bez `ADMIN_TOKEN` → `/admin/api/*`
+  daje 404.
+- **Frontend, jednostkowe (vitest w `admin-ui`):** czyste funkcje mapy — przeliczanie
+  ekran ↔ świat, wybór komórki pod kursorem, dobór kolorów biomów, formatowanie.
+- **Przeglądarka (Playwright, Chromium, bez okna):** jedna komenda `npm run test:ui`.
+  `webServer` uruchamia skrypt, który podnosi Postgresa przez Testcontainers, robi migracje,
+  zasiewa deterministyczne dane (świat o stałym seedzie, dwóch graczy, ich osady i floty),
+  a potem startuje Nesta z `ADMIN_TOKEN` i zbudowanym panelem. Ścieżka: logowanie złym
+  tokenem, logowanie dobrym, lista światów, szczegóły świata, mapa (zoom, kliknięcie w osadę,
+  panel boczny), ekran osady, lista graczy, szczegóły gracza. Dane są stałe, więc asercje
+  są dokładne.
 
-Globalny `AllExceptionsFilter` odpowiada JSON‑em, nieczytelnym w przeglądarce. Kontroler admina
-dostaje własny filtr przez `@UseFilters(AdminHtmlExceptionFilter)`, z `@Catch(HttpException)`:
+## 10. Pytania bez odpowiedzi
 
-| Wyjątek | Odpowiedź |
-|---|---|
-| 401 (`UnauthorizedException` z guarda) | 303 na `/admin/login` |
-| 404 (`NotFoundException`, zły format id z `ParseIntPipe`) | Strona HTML „Nie znaleziono" z układem panelu, status 404 |
-| pozostałe `HttpException` (400 z walidacji, 429 z limitera) | Strona HTML z kodem i komunikatem wyjątku, status wyjątku |
+Do rozstrzygnięcia przy wznowieniu prac, po zmianach w API:
 
-Wszystko, co nie jest `HttpException`, filtr kontrolera przepuszcza do globalnego: log
-z `errorId` i JSON 500. Logika logowania awarii zostaje w jednym miejscu; dla narzędzia
-deweloperskiego JSON przy awarii wystarcza.
+1. **Limit zapytań na trasach panelu.** Token jedzie w każdym żądaniu, więc zgadywanie biłoby
+   w dowolny endpoint. Warianty: bez limitera (sekret 16+ znaków, serwer na localhoście),
+   `@RateLimit('ip')` z istniejącym limitem 10/min (ryzyko 429 przy zwykłym odświeżaniu),
+   nowa zmienna `ADMIN_RATE_LIMIT_PER_MINUTE` domyślnie 60.
+2. **`ETag` dla mapy wobec zmiennej nakładki** (sekcja 6): wspólny `ETag` zależny od osad
+   i pobranych znalezisk, czy rozdzielenie na dwa żądania.
+3. **Czy testy jednostkowe komponentów Vue** (`@vue/test-utils`, `happy-dom`) mają istnieć
+   obok Playwrighta, czy Playwright wystarcza.
+4. **Kształt odpowiedzi błędów** `/admin/api/*`: ten sam JSON co w API gry (`statusCode`,
+   `error`, `message`), czy własny, prostszy kształt dla panelu.
+5. **Wpływ nadchodzących zmian w API gry** na ekrany z sekcji 5 — to powód wstrzymania prac.
 
-Filtr sprawdza `res.headersSent` tak samo jak globalny, żeby nie rzucić wewnątrz filtra.
+## 11. Poprawki wobec pierwszej wersji specu
 
-## 7. Testy
+Zapisane, żeby nie wróciły przy wznowieniu:
 
-### 7.1 Jednostkowe (`vitest run`, bez bazy)
+- `@Header` w Nest jest dekoratorem metody, nie klasy (pierwsza wersja stawiała go na
+  kontrolerze). Przy SPA problem znika: JSON nie wymaga ustawiania typu treści ręcznie.
+- Ciasteczko, HMAC sesji, parsowanie nagłówka `Cookie`, filtr zamieniający wyjątki na HTML
+  i widoki składane tagiem `html` — wszystko to odpada razem z wariantem serwerowym.
+- „Konto” jako nazwa gracza wypada ze słownictwa panelu (słownik każe unikać „account”).
 
-- `env.spec.ts`: brak `ADMIN_TOKEN` → `ADMIN_ENABLED === false`; token krótszy niż 16 znaków →
-  `EnvValidationError`; token przy `NODE_ENV=production` → `EnvValidationError`; poprawny
-  token → `ADMIN_ENABLED === true`.
-- `admin-session.spec.ts`: `parseCookies` na pustym nagłówku, na jednym i kilku ciasteczkach,
-  na wartości zakodowanej procentowo i na wartości z nieprawidłowym kodowaniem; `sessionValue`
-  daje różne wyniki dla różnych tokenów i ten sam dla tego samego; `tokenMatches` odrzuca
-  wartość innej długości bez rzucania.
-- `views/html.spec.ts`: interpolacja `<script>alert(1)</script>` wychodzi jako encje; `raw`
-  nie escapuje; liczby i daty formatowane deterministycznie.
-- `views/*.spec.ts` dla widoków list i szczegółów: HTML zawiera nick, nazwę osady, linki
-  do szczegółów; wartości `NULL` dają etykiety „brak" / „w drodze".
-
-### 7.2 E2E (`test/admin.e2e-spec.ts`, Postgres z Testcontainers)
-
-Aplikacja z `createTestApp({ env: { ADMIN_TOKEN: '...' }, clock })` i fixtures z `test/support`:
-
-- `GET /admin/worlds` bez ciasteczka → 303 na `/admin/login`.
-- `POST /admin/login` ze złym tokenem → 401 z formularzem; z dobrym → 303 na `/admin`
-  i nagłówek `Set-Cookie` z `admin_session`, `HttpOnly`, `Path=/admin`.
-- Z ciasteczkiem: `/admin/worlds`, `/admin/worlds/:id`, `/admin/worlds/:id/settlements/:x/:y`,
-  `/admin/players`, `/admin/players/:id` → 200, `Content-Type: text/html`, treść zawiera nick
-  gracza z fixtures, nazwę osady i liczbę profili; widok osady pokazuje zasoby „teraz" zgodne
-  z `ownView` dla `FixedClock`.
-- Nick z `<` w nazwie osady wychodzi w HTML‑u jako encja (test wstrzyknięcia od końca do końca).
-- `/admin/worlds/999999` i `/admin/worlds/abc` → 404 z `text/html`.
-- `POST /admin/logout` → 303 i `Set-Cookie` z `Max-Age=0`; kolejne `GET /admin/worlds` → 303.
-- `/api/v1/health` działa z włączonym panelem (prefiks nienaruszony).
-- Druga aplikacja bez `ADMIN_TOKEN`: `/admin/worlds` i `/admin/login` → 404, a `/api/v1/health`
-  → 200.
-
-`http.e2e-spec.ts` już testuje limit `RATE_LIMIT_AUTH_PER_MINUTE`; dla `POST /admin/login`
-wystarczy jeden przypadek z limitem `1`, że drugie logowanie daje 429 (HTML).
-
-## 8. Dokumentacja
-
-- `README.md`: akapit o panelu w sekcji „Start lokalny" (`ADMIN_TOKEN`, adres `/admin`,
-  „tylko dev").
-- `.env.example`: zakomentowany wpis `ADMIN_TOKEN` z opisem.
-- `docs/api-guidelines.md` sekcja 1 wymienia panel administracyjny jako poza zakresem pierwszej
-  wersji; przy wdrożeniu dopisać tam odnośnik do tego specu zamiast usuwać zdanie.
-
-## 9. Kolejność prac
+## 12. Kolejność prac (gdy wznowimy)
 
 1. `ADMIN_TOKEN` w `env.ts` z testami, `.env.example`, wykluczenie prefiksu w `configureApp`.
-2. `admin-session.ts` z testami, guard, dekorator anonimowy, filtr HTML.
-3. `views/html.ts` i `layout.ts` z testami escapowania; widok logowania i błędu.
-4. Kontroler z logowaniem i wylogowaniem, rejestracja warunkowa w `AppModule`, pierwsze
-   testy e2e (sesja, 404 bez tokenu, prefiks).
-5. Repozytorium i widoki światów, potem osady, potem graczy; testy e2e każdego widoku.
-6. README i wpis w `api-guidelines.md`.
+2. `AdminGuard` z testem porównania tokenu, `GET /admin/api/session`, warunkowa rejestracja
+   modułu, pierwsze testy e2e (401, 404 bez tokenu, nietknięty prefiks).
+3. `AdminRepository` i endpointy światów, potem osady, potem graczy; test e2e na endpoint.
+4. `GET /admin/api/worlds/:id/map` z `ETag`.
+5. Szkielet `admin-ui`: Vite, Tailwind, router, ekran logowania, lista światów.
+6. Pozostałe ekrany tabelaryczne.
+7. Ekran mapy: rysowanie, zoom, warstwy, panel boczny, testy jednostkowe funkcji mapy.
+8. Serwowanie `dist` z Nesta, skrypty `admin:build` i `admin:dev`.
+9. Playwright z orkiestracją z sekcji 9.
+10. README i wpis w `docs/api-guidelines.md`.
