@@ -11,6 +11,7 @@ import {
 } from '@islanders/platform';
 import type { AuthEnv } from './config/env.js';
 import { AuthDbModule } from './db/db.js';
+import { EventsModule } from './events/events.module.js';
 import { PlayersModule } from './players/players.module.js';
 import { ServiceClientsModule } from './service-clients/service-clients.module.js';
 import { TokensModule } from './tokens/tokens.module.js';
@@ -32,6 +33,7 @@ export class AppModule {
         PlayersModule,
         ServiceClientsModule,
         WorldsModule,
+        EventsModule,
       ],
       providers: [
         { provide: APP_INTERCEPTOR, useClass: ServerTimeInterceptor },
