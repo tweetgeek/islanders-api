@@ -1,7 +1,8 @@
 # Islanders API — panel administracyjny (podgląd)
 
 Data: 2026-09-11, przepisany 2026-09-13 po przesłuchaniu
-Status: **wstrzymany.** Ustalenia zapisane, plan implementacji nie powstaje.
+Status: **zastąpiony, wraca jako etap 6 w `docs/superpowers/specs/2026-09-13-architecture-split-design.md`** (Nuxt w `apps/tools`, logowanie przez auth,
+odczyty z API admina core). Ekrany i rozstrzygnięcia o treści widoków pozostają materiałem.
 Powód wstrzymania: API gry zmienia się pod nowe założenia, a panel czyta jego dane i
 przejmuje jego pojęcia, więc projekt panelu trzeba przejrzeć po tych zmianach.
 Zależności: spec A (wdrożony), spec B (`2026-09-11-settlement-economy-design.md`, w toku).

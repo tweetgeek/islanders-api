@@ -5,6 +5,13 @@ Redis (zarezerwowany od specu C). Kontrakt HTTP i decyzje projektowe:
 `docs/api-guidelines.md`, `docs/superpowers/specs/`, `docs/adr/`. Słownik domeny:
 `../islanders/CONTEXT.md`.
 
+> **Architektura w przebudowie.** Ten kod to monolit obsługujący wszystkie światy w jednej
+> bazie, z geografią liczoną z seeda. Docelowo backend dzieli się na usługę kont (`auth`),
+> osobną aplikację na każdy świat (`core`) i niepubliczny panel (`tools`), w monorepo.
+> Opis docelowy: `docs/architecture.md`; decyzje: `docs/adr/0004`–`0007`; kolejność etapów:
+> `docs/superpowers/specs/2026-09-13-architecture-split-design.md`. Poniższe instrukcje
+> dotyczą obecnego kodu i zostaną przepisane w etapie 1.
+
 ## Start lokalny
 
 ```bash

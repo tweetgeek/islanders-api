@@ -1,7 +1,9 @@
 # Islanders API — spec B: ekonomia osady
 
 Data: 2026-09-11
-Status: zatwierdzony w brainstormingu, czeka na plan implementacji
+Status: **wstrzymany, wraca jako etap 5 w `docs/superpowers/specs/2026-09-13-architecture-split-design.md`.** Treść merytoryczna (formuły, kolejki,
+garnizon, rozstrzyganie, testy) obowiązuje; schemat traci `world_id`, a sekcję 10 realizują
+etapy 1–2. WIP kodu: gałąź `feat/spec-b-economy`.
 Poprzednik: `docs/superpowers/specs/2026-09-08-backend-foundation-geography-design.md` (spec A, wdrożony)
 Źródło decyzji: `docs/api-guidelines.md` sekcje 5-7, plus rozstrzygnięcia z tej sesji.
 

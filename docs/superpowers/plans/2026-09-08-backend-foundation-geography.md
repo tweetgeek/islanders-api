@@ -1,5 +1,7 @@
 # Spec A: fundament, geografia, konta, światy i odczyty — plan implementacji
 
+> **Status: zrealizowany w monolicie; nie wykonywać ponownie.** Architektura zmieniona przez `docs/superpowers/specs/2026-09-13-architecture-split-design.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Działający backend NestJS, do którego klient Godot może się zarejestrować, dołączyć do świata, dostać osadę domową na lądzie i czytać stan świata, osady i floty zgodnie z regułami informacyjnymi, z geografią bit w bit zgodną z klientem.

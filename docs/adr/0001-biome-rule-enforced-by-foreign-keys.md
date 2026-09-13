@@ -27,3 +27,9 @@ nie ma stanu, z którym kolumna mogłaby się rozjechać.
 - Walidacja wyłącznie w aplikacji: każdy zapis omijający serwis (skrypt, naprawa ręczna,
   przyszły moduł) mógłby złamać regułę bez ostrzeżenia.
 - `CHECK` na `buildings.type` bez biomu: nie potrafi wyrazić zależności od osady.
+
+## Adnotacja 2026-09-13
+
+Po ADR 0004 biom wyspy nie jest już wyliczany z seeda, tylko zapisany w tabeli `islands` przy
+generacji świata. Decyzja o kluczach obcych obowiązuje bez zmian; `settlements.biome` jest
+kopią biomu z wiersza `islands`, a po ADR 0006 klucze tracą kolumnę `world_id`.
