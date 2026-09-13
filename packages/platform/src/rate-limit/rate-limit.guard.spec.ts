@@ -1,7 +1,6 @@
 import { ExecutionContext, HttpException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { FixedClock } from '@islanders/domain/time';
-import type { Env } from '../config/env.js';
 import {
   RATE_LIMIT,
   RateLimitGuard,
@@ -11,7 +10,7 @@ import {
 const env = {
   RATE_LIMIT_AUTH_PER_MINUTE: 10,
   RATE_LIMIT_PLAYER_PER_MINUTE: 120,
-} as Env;
+} as never;
 
 function context(
   req: Record<string, unknown>,
