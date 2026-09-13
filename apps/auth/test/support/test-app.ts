@@ -9,6 +9,7 @@ import { inject } from 'vitest';
 import { AppModule } from '../../src/app.module.js';
 import { configureAuthApp } from '../../src/bootstrap.js';
 import { parseAuthEnv } from '../../src/config/env.js';
+import { keysEnv, testSigningKeys } from './keys.js';
 
 export interface CreateTestAppOptions {
   env?: Partial<Record<string, string>>;
@@ -32,7 +33,7 @@ export async function createTestApp(options: CreateTestAppOptions = {}): Promise
     DATABASE_URL: inject('databaseUrl'),
     REDIS_URL: inject('redisUrl'),
     AUTH_ISSUER: 'https://users.islanders.test',
-    JWT_SIGNING_KEYS: '[]',
+    JWT_SIGNING_KEYS: keysEnv(testSigningKeys.active),
     SERVICE_CLIENTS: '[]',
     RATE_LIMIT_AUTH_PER_MINUTE: '100000',
     RATE_LIMIT_IP_PER_MINUTE: '100000',
