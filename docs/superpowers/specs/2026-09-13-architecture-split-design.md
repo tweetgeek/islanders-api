@@ -53,7 +53,7 @@ własny spec, plan i implementację.
 | `src/modules/auth`, `players`, `refresh_tokens` | `apps/auth` | HS256 → EdDSA z JWKS; `players.id serial` → `accounts.id uuid`; rotacja z oknem łaski bez zmian |
 | `src/modules/worlds` | `apps/auth` (rejestr) i `apps/core` (ustawienia, dołączanie, profile) | `worlds` → `world_settings` w core i `worlds` rejestr w auth |
 | `src/modules/settlements`, `fleets` | `apps/core` | bez `world_id`; widoki i reguły informacyjne bez zmian |
-| `src/infra/*` (config, db, http, swagger, redis, time) | wspólna warstwa w każdej aplikacji Nest | limiter na Redisie, `trust proxy`, dwa porty w core |
+| `src/infra/*` (config, db, http, swagger, redis, time) | `packages/platform` | limiter na Redisie, `trust proxy`, dwa porty w core |
 | `src/cli/create-world.ts` | `apps/core/src/cli` | zastąpiony przez `world:init/generate/open/export/import` |
 | `drizzle/` | `apps/auth/drizzle`, `apps/core/drizzle` | migracje od zera |
 | ADR 0001–0003 API | bez zmian | ADR 0001 z adnotacją o źródle biomu (ADR 0004) |
@@ -72,7 +72,8 @@ dopiero, gdy poprzedni jest wdrożony na gałęzi głównej.
 ### Etap 1 — monorepo i auth
 
 - Przeniesienie repozytorium na npm workspaces; dotychczasowy kod jako `apps/core` bez zmian
-  zachowania; `packages/domain` i `packages/contracts`.
+  zachowania; `packages/domain`, `packages/contracts` i `packages/platform`.
+- Spec: `docs/superpowers/specs/2026-09-13-stage-1-monorepo-and-auth-design.md`.
 - `apps/auth`: rejestracja, logowanie, odświeżanie, wylogowanie (logika ze specu A §8),
   konta uuid, role `player`/`tester`/`admin`, EdDSA z rotacją kluczy, JWKS, client credentials
   dla usług, rejestr światów (`PUT /internal/v1/worlds/:slug`, `GET /v1/worlds`),

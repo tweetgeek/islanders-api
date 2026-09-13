@@ -29,12 +29,12 @@ co tworzy świat, jest zapisane w bazie świata, więc świat da się odtworzyć
      │          │           │ :3001 admin │◄─────────┼─────────────┼──────────│           │
      └────┬─────┘           └──┬───────┬──┘          └──┬───────┬──┘          └───────────┘
        PG auth             PG w-1   Redis w-1       PG w-2t  Redis w-2t
-              ─── sieć wewnętrzna: auth:3000, core-world-1:3000/3001, … ───
+              ─── sieć wewnętrzna: auth:3001, core-world-1:3000/3001, … ───
 ```
 
 | Usługa | Odpowiada za | Stan |
 |---|---|---|
-| **auth** | konta, hasła, sesje i refresh tokeny, role globalne, rejestr światów, klucze podpisu i JWKS, tokeny serwisowe | własny Postgres, Redis (limiter) |
+| **auth** | konta, hasła, sesje i refresh tokeny, role globalne, rejestr światów, klucze podpisu i JWKS, tokeny serwisowe; port publiczny `:3000`, wewnętrzny `:3001` | własny Postgres, Redis (limiter) |
 | **core** | dokładnie jeden świat: ustawienia, mapa, pogoda, profile, osady, zlecenia, floty, API gry i API admina | własny Postgres, własny Redis (BullMQ, limiter) |
 | **tools** | panel admina i narzędzia techniczne | bez własnej bazy; czyta z auth i z API admina core |
 
@@ -53,9 +53,13 @@ apps/
 packages/
   contracts/   schematy zod, DTO, typy claimów JWT i zdarzeń między usługami
   domain/      czysta domena gry: reguły, balans, ekonomia, zegar — bez Nest i bez bazy
+  platform/    wspólna infrastruktura Nest: konfiguracja, Drizzle i migrator, filtr błędów,
+               limiter na Redisie, server-time, health, drugi serwer HTTP na porcie wewnętrznym
 ```
 
-Każda aplikacja buduje własny obraz. `packages/*` nie mają zależności od Nest ani od Drizzle.
+Każda aplikacja buduje własny obraz. `domain` i `contracts` nie zależą od Nest ani od Drizzle;
+`platform` zależy od nich świadomie. Pakiety są budowane `tsc -b` do `dist` i konsumowane
+przez `exports`.
 
 ## 4. Tożsamość i uprawnienia
 
@@ -175,7 +179,7 @@ Auth i core są bezstanowe i uruchamiane w N replikach za rozdzielaczem obciąż
 
 ## 7. Komunikacja między usługami
 
-Wyłącznie po sieci wewnętrznej, adresy z konfiguracji (`AUTH_INTERNAL_URL=http://auth:3000`),
+Wyłącznie po sieci wewnętrznej, adresy z konfiguracji (`AUTH_INTERNAL_URL=http://auth:3001`),
 nigdy przez publiczne domeny. Kontrakty w `packages/contracts`, ścieżki `/internal/v1`.
 
 | Wywołanie | Kierunek | Cel |
@@ -222,14 +226,14 @@ Konfiguracja walidowana zod przy starcie.
 - **core:** `WORLD_SLUG`, `PUBLIC_URL`, `ADMIN_URL`, `PORT`, `ADMIN_PORT`, `DATABASE_URL`,
   `REDIS_URL`, `AUTH_INTERNAL_URL`, `AUTH_ISSUER`, `AUTH_CLIENT_ID`, `AUTH_CLIENT_SECRET`,
   `CORE_ROLE`, `TRUST_PROXY`.
-- **auth:** `PORT`, `DATABASE_URL`, `REDIS_URL`, `JWT_SIGNING_KEYS` (JSON z `kid`, aktywny
-  klucz i klucze wycofywane), `JWT_ACCESS_TTL`, `JWT_REFRESH_TTL`, `SERVICE_CLIENTS`
-  (identyfikatory i skróty sekretów), `TRUST_PROXY`.
+- **auth:** `PORT`, `ADMIN_PORT`, `AUTH_ISSUER`, `DATABASE_URL`, `REDIS_URL`, `JWT_SIGNING_KEYS`
+  (JSON z `kid`, aktywny klucz i klucze wycofywane), `JWT_ACCESS_TTL`, `JWT_REFRESH_TTL`,
+  `SERVICE_CLIENTS` (identyfikatory, skróty sekretów, slug świata), `TRUST_PROXY`.
 - **tools:** `AUTH_INTERNAL_URL`, `AUTH_PUBLIC_URL`.
 
 Lokalnie `docker-compose.yml` stawia jeden Postgres z osobnymi bazami dla auth i każdego
 świata, jeden Redis z osobnymi numerami baz, oraz auth i `core-world-1` na portach hosta
-(auth `3000`, core `3100` publiczny i `3101` wewnętrzny).
+(auth `3000` publiczny i `3001` wewnętrzny, core `3100` publiczny i `3101` wewnętrzny).
 
 ## 10. Testy
 
