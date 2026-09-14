@@ -19,11 +19,6 @@ export interface ConfigureAppOptions {
  * żeby testy biły w dokładnie tę samą aplikację, która idzie na produkcję.
  */
 export function configureApp(app: INestApplication, options: ConfigureAppOptions): void {
-  // Express 5 domyślnie routuje bez uwzględniania wielkości liter — bez tego ustawienia
-  // `POST /INTERNAL/v1/token` trafiłby w ten sam handler co `/internal/v1/token`, omijając
-  // middleware zakresu portu. Celowo NIE włączamy `strict routing` — zmieniłoby to zachowanie
-  // istniejących tras core przy końcowym ukośniku.
-  (app.getHttpAdapter().getInstance() as Express).set('case sensitive routing', true);
   if (options.env.TRUST_PROXY !== false) {
     // `HttpServer.getInstance()` w typach @nestjs/common nie przyjmuje parametru typu
     // (w przeciwieństwie do przykładu ze specyfikacji) — rzutowanie zamiast argumentu generycznego.
