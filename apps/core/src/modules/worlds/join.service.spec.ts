@@ -4,6 +4,7 @@ import type { Clock } from '@islanders/domain/time';
 import { islandAt } from '../../domain/geography/index.js';
 import type { Db } from '../../infra/db/db.module.js';
 import type { WorldSettingsRepository, WorldSettingsRow } from '../../world/world-settings.repository.js';
+import type { OutboxRepository } from '../../outbox/outbox.repository.js';
 import type { ProfileRow, ProfilesRepository } from '../profiles/profiles.repository.js';
 import type { SettlementRecord } from '../settlements/settlement-views.js';
 import type { SettlementsRepository } from '../settlements/settlements.repository.js';
@@ -62,21 +63,31 @@ function makeJoinService(
       } satisfies SettlementRecord),
   } as unknown as SettlementsRepository;
 
+  const events: unknown[] = [];
+  const outbox = { add: (_client: unknown, event: unknown) => (events.push(event), Promise.resolve()) } as unknown as OutboxRepository;
+
   // Atrapa transakcji: uruchamia ciało i przepuszcza jego odrzucenie, tak jak drizzle.
   const db = { transaction: (fn: (tx: unknown) => Promise<void>) => fn({}) } as unknown as Db;
   const clock: Clock = { now: () => new Date('2026-09-14T12:00:00.000Z') };
-  return { service: new JoinService(worlds, profiles, settlements, db, clock), insertAttempts, profileAttempts };
+  return {
+    service: new JoinService(worlds, profiles, settlements, outbox, db, clock),
+    insertAttempts,
+    profileAttempts,
+    events,
+  };
 }
 
 describe('JoinService.join — ponawianie i klasyfikacja błędów bazy', () => {
   it('po konflikcie settlements_pk losuje jeszcze raz i kończy się sukcesem', async () => {
-    const { service, insertAttempts, profileAttempts } = makeJoinService({
+    const { service, insertAttempts, profileAttempts, events } = makeJoinService({
       settlement: [uniqueViolation('settlements_pk'), null],
     });
     const view = await service.join(world, PLAYER);
     expect(insertAttempts).toHaveLength(2);
     expect(profileAttempts[1]).toEqual({ homeX: insertAttempts[1].x, homeY: insertAttempts[1].y });
     expect(view).toMatchObject({ x: insertAttempts[1].x, world: 'world-7', ownerId: PLAYER.id });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: 'PlayerJoinedWorld', worldSlug: 'world-7', playerId: PLAYER.id });
   });
 
   it('gdy settlements_pk pada za każdym razem, wraca 409 po trzech próbach', async () => {

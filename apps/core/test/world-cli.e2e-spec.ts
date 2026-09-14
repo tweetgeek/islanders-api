@@ -3,7 +3,7 @@ import type { INestApplicationContext } from '@nestjs/common';
 import { CliModule } from '../src/cli/cli.module.js';
 import { WorldAlreadyInitializedError, WorldInitService } from '../src/world/world-init.service.js';
 import { StatusChangeRejectedError, WorldStatusService } from '../src/world/world-status.service.js';
-import { profiles } from '../src/infra/db/schema/index.js';
+import { outbox, profiles } from '../src/infra/db/schema/index.js';
 import { DB, type Db } from '../src/infra/db/db.module.js';
 import { createTestDatabase } from './support/test-db.js';
 
@@ -34,7 +34,12 @@ describe('world:init i zmiany statusu (e2e)', () => {
   it('naturalne przejścia bez --force, inne tylko z --force, DRAFT przy profilach zablokowany', async () => {
     const status = ctx.get(WorldStatusService);
     await expect(status.change('OPEN', { force: false })).resolves.toEqual({ from: 'DRAFT', to: 'OPEN', forced: false });
+    const rows = await ctx.get<Db>(DB).select().from(outbox);
+    expect(rows.map((r) => r.payload)).toContainEqual(
+      expect.objectContaining({ type: 'WorldStatusChanged', status: 'OPEN', worldSlug: 'world-cli' }),
+    );
     await expect(status.change('OPEN', { force: true })).rejects.toMatchObject({ reason: 'SAME_STATUS' });
+    expect(await ctx.get<Db>(DB).select().from(outbox)).toHaveLength(rows.length);
     await expect(status.change('ENDED', { force: false })).rejects.toBeInstanceOf(StatusChangeRejectedError);
     await expect(status.change('CLOSED', { force: false })).resolves.toMatchObject({ to: 'CLOSED', forced: false });
     await expect(status.change('OPEN', { force: true })).resolves.toMatchObject({ to: 'OPEN', forced: true });

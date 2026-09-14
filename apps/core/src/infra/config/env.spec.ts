@@ -5,6 +5,10 @@ const base = {
   WORLD_SLUG: 'world-1',
   AUTH_INTERNAL_URL: 'http://auth:3001',
   AUTH_ISSUER: 'https://users.islanders.online',
+  PUBLIC_URL: 'https://world-1.islanders.online',
+  ADMIN_URL: 'http://core-world-1:3101',
+  AUTH_CLIENT_ID: 'core-world-1',
+  AUTH_CLIENT_SECRET: 'sekret',
 };
 
 describe('parseEnv (core)', () => {
@@ -29,6 +33,10 @@ describe('parseEnv (core)', () => {
 
   it('odrzuca nieznaną rolę procesu', () => {
     expect(() => parseEnv({ ...base, CORE_ROLE: 'batch' })).toThrow(/CORE_ROLE/);
+  });
+
+  it('wymaga niepustego sekretu klienta auth', () => {
+    expect(() => parseEnv({ ...base, AUTH_CLIENT_SECRET: '' })).toThrow(/AUTH_CLIENT_SECRET/);
   });
 
   it('nie zna już sekretów JWT core', () => {

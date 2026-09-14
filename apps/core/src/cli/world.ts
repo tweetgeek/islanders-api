@@ -3,6 +3,7 @@ import { parseArgs } from 'node:util';
 import { NestFactory } from '@nestjs/core';
 import { z } from 'zod';
 import type { WorldStatus } from '@islanders/contracts';
+import { OutboxRepository } from '../outbox/outbox.repository.js';
 import { WorldInitService } from '../world/world-init.service.js';
 import { WorldSettingsRepository } from '../world/world-settings.repository.js';
 import { WorldStatusService } from '../world/world-status.service.js';
@@ -59,6 +60,8 @@ try {
   } else if (command === 'status') {
     const world = await app.get(WorldSettingsRepository).get();
     console.log(JSON.stringify(world, null, 2));
+    const stats = await app.get(OutboxRepository).stats();
+    console.log(`Outbox: ${stats.pending} niewysłanych, najstarsze: ${stats.oldestPendingAt?.toISOString() ?? '—'}`);
   } else {
     const result = await app.get(WorldStatusService).change(TARGETS[command!], { force: values.force ?? false });
     if (result.forced) {

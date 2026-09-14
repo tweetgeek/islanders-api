@@ -18,6 +18,8 @@ import { DbModule } from './infra/db/db.module.js';
 import { FleetsModule } from './modules/fleets/fleets.module.js';
 import { SettlementsModule } from './modules/settlements/settlements.module.js';
 import { WorldsModule } from './modules/worlds/worlds.module.js';
+import { OutboxDispatchModule } from './outbox/outbox-dispatch.module.js';
+import { OutboxRepositoryModule } from './outbox/outbox-repository.module.js';
 import { WorldModule } from './world/world.module.js';
 
 @Module({})
@@ -33,9 +35,11 @@ export class AppModule {
         RateLimitModule,
         WorldModule,
         AccessModule,
+        OutboxRepositoryModule,
         WorldsModule,
         SettlementsModule,
         FleetsModule,
+        OutboxDispatchModule,
         HealthModule,
         ...(servesAdminApi(env) ? [AdminModule] : []),
       ],

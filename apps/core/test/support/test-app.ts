@@ -87,6 +87,10 @@ export async function createTestApp(options: CreateTestAppOptions = {}): Promise
     RATE_LIMIT_PREFIX: `rl-test-${randomUUID()}`,
     // Prace w tle (outbox, zgłoszenie świata) testy włączają jawnie rolą all/worker.
     CORE_ROLE: 'api',
+    PUBLIC_URL: `https://${slug}.islanders.test`,
+    ADMIN_URL: 'http://127.0.0.1:3101',
+    AUTH_CLIENT_ID: `core-${slug}`,
+    AUTH_CLIENT_SECRET: 'sekret-testowy-core-0123456789abcdef',
     ...options.env,
   });
   let builder = Test.createTestingModule({ imports: [AppModule.forRoot(env)] });

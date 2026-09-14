@@ -6,6 +6,8 @@ import type { PlayerPrincipal } from '../../access/player-request.js';
 import { DB, type Db } from '../../infra/db/db.module.js';
 import { isUniqueViolation } from '../../infra/db/pg-errors.js';
 import { CLOCK } from '../../infra/time/time.module.js';
+import { OutboxRepository } from '../../outbox/outbox.repository.js';
+import { playerJoinedWorldEvent } from '../../outbox/events.js';
 import { WorldSettingsRepository, type WorldSettingsRow } from '../../world/world-settings.repository.js';
 import { ProfilesRepository } from '../profiles/profiles.repository.js';
 import { coordKey } from '../settlements/bbox.js';
@@ -22,6 +24,7 @@ export class JoinService {
     private readonly worlds: WorldSettingsRepository,
     private readonly profiles: ProfilesRepository,
     private readonly settlements: SettlementsRepository,
+    private readonly outbox: OutboxRepository,
     @Inject(DB) private readonly db: Db,
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
@@ -68,6 +71,7 @@ export class JoinService {
             lastSyncAt: now,
             buildings: startingBuildings(pick.biome),
           });
+          await this.outbox.add(tx, playerJoinedWorldEvent(world.slug, player.id, now));
         });
       } catch (err) {
         // Ktoś wziął tę wyspę w międzyczasie — losujemy jeszcze raz. Współrzędne osady chronią
