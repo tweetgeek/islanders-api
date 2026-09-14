@@ -11,6 +11,8 @@ export const envSchema = z
     AUTH_INTERNAL_URL: z.url(),
     AUTH_ISSUER: z.url(),
     ISLANDERS_CLIENT_DIR: z.string().default('../../../islanders'),
+    ADMIN_PORT: z.coerce.number().int().min(1).max(65535).default(3101),
+    CORE_ROLE: z.enum(['all', 'api', 'worker']).default('all'),
   })
   .transform(withSwaggerDefault);
 

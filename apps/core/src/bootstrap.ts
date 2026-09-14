@@ -1,5 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import { configureApp } from '@islanders/platform';
+import { configureApp, portScopeMiddleware } from '@islanders/platform';
 import type { Env } from './infra/config/env.js';
 
 /** Konfiguracja wspólna dla main.ts i testów e2e. Wywołać przed `app.listen`. */
@@ -13,4 +13,6 @@ export function configureCoreApp(app: INestApplication, env: Env): void {
       path: 'docs',
     },
   });
+  // Po configureApp: odpowiedź 404 z zakresu portu też niesie X-Server-Time.
+  app.use(portScopeMiddleware({ internalPrefixes: ['/health', '/admin'], sharedPaths: [] }));
 }

@@ -16,6 +16,8 @@ describe('parseEnv (core)', () => {
     expect(env.TRUST_PROXY).toBe(false);
     expect(env.ISLANDERS_CLIENT_DIR).toBe('../../../islanders');
     expect(env.SWAGGER_ENABLED).toBe(true);
+    expect(env.ADMIN_PORT).toBe(3101);
+    expect(env.CORE_ROLE).toBe('all');
   });
 
   it('wymaga poprawnego sluga świata i adresów auth', () => {
@@ -23,6 +25,10 @@ describe('parseEnv (core)', () => {
     expect(() => parseEnv({ ...base, AUTH_INTERNAL_URL: 'auth' })).toThrow(/AUTH_INTERNAL_URL/);
     const { AUTH_ISSUER: _drop, ...noIssuer } = base;
     expect(() => parseEnv(noIssuer)).toThrow(EnvValidationError);
+  });
+
+  it('odrzuca nieznaną rolę procesu', () => {
+    expect(() => parseEnv({ ...base, CORE_ROLE: 'batch' })).toThrow(/CORE_ROLE/);
   });
 
   it('nie zna już sekretów JWT core', () => {

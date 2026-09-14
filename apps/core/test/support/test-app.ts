@@ -6,10 +6,11 @@ import postgres from 'postgres';
 import request from 'supertest';
 import { inject } from 'vitest';
 import type { Clock } from '@islanders/domain/time';
-import { CLOCK } from '@islanders/platform';
+import { CLOCK, InternalHttpServer, closeServer, listenInternal } from '@islanders/platform';
 import { AppModule } from '../../src/app.module.js';
 import { configureCoreApp } from '../../src/bootstrap.js';
 import { parseEnv } from '../../src/infra/config/env.js';
+import { servesPublicApi } from '../../src/infra/config/roles.js';
 import { DB, type Db } from '../../src/infra/db/db.module.js';
 import * as schema from '../../src/infra/db/schema/index.js';
 import type { InitWorldInput } from '../../src/world/world-settings.repository.js';
@@ -31,6 +32,7 @@ export interface CreateTestAppOptions {
 export interface TestApp {
   app: INestApplication;
   http: () => ReturnType<typeof request>;
+  internalHttp: () => ReturnType<typeof request>;
   db: Db;
   slug: string;
   fakeAuth: FakeAuth;
@@ -83,6 +85,8 @@ export async function createTestApp(options: CreateTestAppOptions = {}): Promise
     AUTH_ISSUER: TEST_ISSUER,
     RATE_LIMIT_IP_PER_MINUTE: '100000',
     RATE_LIMIT_PREFIX: `rl-test-${randomUUID()}`,
+    // Prace w tle (outbox, zgłoszenie świata) testy włączają jawnie rolą all/worker.
+    CORE_ROLE: 'api',
     ...options.env,
   });
   let builder = Test.createTestingModule({ imports: [AppModule.forRoot(env)] });
@@ -92,15 +96,26 @@ export async function createTestApp(options: CreateTestAppOptions = {}): Promise
   const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication({ logger: ['error', 'warn'] });
   configureCoreApp(app, env);
-  await app.listen(0, '127.0.0.1');
+  if (servesPublicApi(env)) {
+    await app.listen(0, '127.0.0.1');
+  } else {
+    await app.init();
+  }
+  const internal = await listenInternal(app, 0, '127.0.0.1');
+  app.get(InternalHttpServer).attach(internal);
   return {
     app,
-    http: () => request(app.getHttpServer()),
+    http: () => {
+      if (!servesPublicApi(env)) throw new Error('Rola worker nie ma portu publicznego');
+      return request(app.getHttpServer());
+    },
+    internalHttp: () => request(internal),
     db: app.get<Db>(DB),
     slug,
     fakeAuth,
     databaseUrl,
     close: async () => {
+      await closeServer(internal);
       await app.close();
       if (!options.fakeAuth) await fakeAuth.close();
     },
