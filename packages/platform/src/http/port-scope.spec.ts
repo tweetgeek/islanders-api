@@ -40,4 +40,8 @@ describe('portScopeMiddleware', () => {
   it('prefiks dopasowuje całe segmenty, nie początek słowa', () => {
     expect(run('/internals', false).nextCalled).toBe(true);
   });
+  it('wielkość liter w ścieżce nie omija zakresu portu', () => {
+    expect(run('/INTERNAL/v1/token', false)).toEqual({ status: 404, nextCalled: false });
+    expect(run('/Health/ready', false)).toEqual({ status: 404, nextCalled: false });
+  });
 });

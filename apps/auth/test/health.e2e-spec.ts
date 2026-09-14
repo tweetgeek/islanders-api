@@ -25,4 +25,9 @@ describe('auth: health i zakres portów (e2e)', () => {
     const missing = await t.publicHttp().post('/nie/istnieje').send({}).expect(404);
     expect(Object.keys(internal.body).sort()).toEqual(Object.keys(missing.body).sort());
   });
+
+  it('zmiana wielkości liter w trasie wewnętrznej nie omija zakresu portu publicznego', async () => {
+    await t.publicHttp().post('/INTERNAL/v1/token').send({}).expect(404);
+    await t.publicHttp().get('/Health/ready').expect(404);
+  });
 });

@@ -11,7 +11,11 @@ export interface PortScopeOptions {
 }
 
 function matches(path: string, prefix: string): boolean {
-  return path === prefix || path.startsWith(`${prefix}/`);
+  // Express 5 routuje bez uwzględniania wielkości liter, więc porównanie musi też ją ignorować —
+  // inaczej np. `POST /INTERNAL/v1/token` ominąłby ten middleware i trafił na port publiczny.
+  const lowerPath = path.toLowerCase();
+  const lowerPrefix = prefix.toLowerCase();
+  return lowerPath === lowerPrefix || lowerPath.startsWith(`${lowerPrefix}/`);
 }
 
 /**
