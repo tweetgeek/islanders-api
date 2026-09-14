@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { OutboxDispatcher } from '../src/outbox/outbox-dispatcher.js';
 import { WorldRegistrar } from '../src/outbox/world-registrar.js';
@@ -63,6 +64,22 @@ describe('outbox i zgłoszenie świata (e2e)', () => {
     await t.db.update(outbox).set({ nextAttemptAt: new Date(Date.now() - 1_000) }).where(eq(outbox.id, rows[0].id));
     expect(await app(t).dispatchOnce()).toBe('sent');
     expect(routes.batches[0].events).toHaveLength(2);
+  });
+
+  it('401 z tokenu serwisowego: próba zapisana z backoffem, logowana jako błąd kontraktu', async () => {
+    installAuthRoutes(t.fakeAuth, { tokenStatus: 401 });
+    await joinWorld(t, await signPlayerToken());
+    // mockRestore() także czyści historię wywołań, więc asercja musi być przed nim.
+    const errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    try {
+      expect(await app(t).dispatchOnce()).toBe('failed');
+      expect(errorSpy).toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+    const [row] = await t.db.select().from(outbox);
+    expect(row).toMatchObject({ attempts: 1, sentAt: null });
+    expect(row.nextAttemptAt!.getTime()).toBeGreaterThan(Date.now());
   });
 
   it('API admina pokazuje zaległości outboxa', async () => {

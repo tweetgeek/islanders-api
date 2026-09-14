@@ -1,6 +1,16 @@
 import { createTestApp } from './support/test-app.js';
 import { bearer, signPlayerToken, signToolsToken } from './support/tokens.js';
 import { joinWorld } from './support/fixtures.js';
+import { installAuthRoutes } from './support/fake-auth-routes.js';
+import { startFakeAuth } from './support/fake-auth.js';
+
+async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<void> {
+  const until = Date.now() + timeoutMs;
+  while (!predicate()) {
+    if (Date.now() > until) throw new Error('warunek nie spełniony w czasie');
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
 
 describe('porty i role core (e2e)', () => {
   it('health tylko na porcie wewnętrznym; /admin i /health na publicznym -> 404', async () => {
@@ -35,14 +45,21 @@ describe('porty i role core (e2e)', () => {
   });
 
   it('rola worker: brak portu publicznego, health działa, API admina nie istnieje', async () => {
-    const t = await createTestApp({ env: { CORE_ROLE: 'worker' } });
+    // Rola worker też zgłasza świat w tle (runsBackgroundJobs) — fałszywe auth trzeba
+    // przygotować przed startem aplikacji i poczekać na zgłoszenie przed zamknięciem,
+    // inaczej WorldRegistrar dostaje 404 z domyślnego fałszywego auth bez tras.
+    const auth = await startFakeAuth();
+    const routes = installAuthRoutes(auth);
+    const t = await createTestApp({ fakeAuth: auth, env: { CORE_ROLE: 'worker' } });
     try {
       expect(() => t.http()).toThrow(/worker/);
       await t.internalHttp().get('/health/ready').expect(200);
       await t.internalHttp().get('/admin/v1/world')
         .set('Authorization', bearer(await signToolsToken())).expect(404);
+      await waitFor(() => routes.registrations.length > 0);
     } finally {
       await t.close();
+      await auth.close();
     }
   });
 });

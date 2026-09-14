@@ -14,11 +14,17 @@ export interface AuthResponse {
 }
 
 export class AuthUnavailableError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly status?: number,
+  ) {
     super(`Usługa kont niedostępna: ${message}`);
     this.name = 'AuthUnavailableError';
   }
 }
+
+/** Odpowiedzi auth, które nie mają sensu ponawiać bez zmiany danych — logowane jako `error`. */
+export const CONTRACT_ERROR_STATUSES = new Set([400, 401, 403]);
 
 const tokenSchema = z.object({ accessToken: z.string().min(1), expiresAt: z.iso.datetime() });
 
@@ -58,7 +64,7 @@ export class AuthClient {
       clientSecret: this.env.AUTH_CLIENT_SECRET,
     });
     if (res.status !== 200) {
-      throw new AuthUnavailableError(`token serwisowy: HTTP ${res.status}`);
+      throw new AuthUnavailableError(`token serwisowy: HTTP ${res.status}`, res.status);
     }
     const parsed = tokenSchema.parse(res.body);
     this.token = { value: parsed.accessToken, expiresAt: Date.parse(parsed.expiresAt) };

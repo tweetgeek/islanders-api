@@ -6,7 +6,7 @@ import {
   type OnApplicationShutdown,
 } from '@nestjs/common';
 import { ENV } from '@islanders/platform';
-import { AuthClient } from '../auth-client/auth-client.js';
+import { AuthClient, AuthUnavailableError, CONTRACT_ERROR_STATUSES } from '../auth-client/auth-client.js';
 import { backoffDelayMs } from '../auth-client/backoff.js';
 import type { Env } from '../infra/config/env.js';
 import { runsBackgroundJobs } from '../infra/config/roles.js';
@@ -41,9 +41,12 @@ export class WorldRegistrar implements OnApplicationBootstrap, OnApplicationShut
     return this.scheduled;
   }
 
+  /** Nigdy nie odrzuca — błąd odczytu świata albo wywołania auth to `false`, nie wyjątek. */
   async registerOnce(): Promise<boolean> {
-    const world = await this.worlds.get();
+    let slug: string | undefined;
     try {
+      const world = await this.worlds.get();
+      slug = world.slug;
       const res = await this.auth.registerWorld(world.slug, {
         name: world.name,
         publicUrl: this.env.PUBLIC_URL,
@@ -52,19 +55,36 @@ export class WorldRegistrar implements OnApplicationBootstrap, OnApplicationShut
         isTest: world.isTest,
       });
       if (res.status === 204) return true;
-      this.logger.warn(`Zgłoszenie świata ${world.slug} odrzucone: HTTP ${res.status}`);
+      const message = `Zgłoszenie świata ${world.slug} odrzucone: HTTP ${res.status}`;
+      if (CONTRACT_ERROR_STATUSES.has(res.status)) this.logger.error(message);
+      else this.logger.warn(message);
     } catch (err) {
-      this.logger.warn(`Zgłoszenie świata ${world.slug} nieudane: ${err instanceof Error ? err.message : String(err)}`);
+      const status = err instanceof AuthUnavailableError ? err.status : undefined;
+      const who = slug ? `świata ${slug}` : 'świata';
+      const message = `Zgłoszenie ${who} nieudane: ${err instanceof Error ? err.message : String(err)}`;
+      if (status !== undefined && CONTRACT_ERROR_STATUSES.has(status)) this.logger.error(message);
+      else this.logger.warn(message);
     }
     return false;
   }
 
   private schedule(delayMs: number, attempt: number): void {
     if (this.stopped) return;
-    this.timer = setTimeout(async () => {
-      if (await this.registerOnce()) return;
-      this.schedule(backoffDelayMs(attempt, Math.random), attempt + 1);
+    this.timer = setTimeout(() => {
+      void this.runAndReschedule(attempt);
     }, delayMs);
     this.timer.unref();
+  }
+
+  /** Osobna metoda, żeby `setTimeout` nigdy nie dostał odrzuconej obietnicy — nawet z błędu w `registerOnce`. */
+  private async runAndReschedule(attempt: number): Promise<void> {
+    let ok = false;
+    try {
+      ok = await this.registerOnce();
+    } catch (err) {
+      this.logger.error('Nieoczekiwany błąd zgłoszenia świata', err instanceof Error ? err.stack : String(err));
+    }
+    if (ok) return;
+    this.schedule(backoffDelayMs(attempt, Math.random), attempt + 1);
   }
 }

@@ -9,7 +9,7 @@ import type { Sql } from 'postgres';
 import type { WorldEvent } from '@islanders/contracts';
 import type { Clock } from '@islanders/domain/time';
 import { CLOCK, ENV, PG_CLIENT, withAdvisoryLock } from '@islanders/platform';
-import { AuthClient } from '../auth-client/auth-client.js';
+import { AuthClient, AuthUnavailableError, CONTRACT_ERROR_STATUSES } from '../auth-client/auth-client.js';
 import { backoffDelayMs } from '../auth-client/backoff.js';
 import type { Env } from '../infra/config/env.js';
 import { runsBackgroundJobs } from '../infra/config/roles.js';
@@ -21,7 +21,6 @@ export const OUTBOX_BATCH = 100;
 export const OUTBOX_RETENTION_MS = 7 * 24 * 3_600_000;
 export const OUTBOX_STALE_MS = 15 * 60_000;
 const STALE_WARNING_EVERY_MS = 60_000;
-const CONTRACT_ERRORS = new Set([400, 401, 403]);
 
 /** Wysyła zdarzenia do auth „co najmniej raz”, w kolejności, jedną repliką naraz (ADR 0007). */
 @Injectable()
@@ -89,13 +88,14 @@ export class OutboxDispatcher implements OnApplicationBootstrap, OnApplicationSh
       status = res.status;
       error = `HTTP ${res.status}`;
     } catch (err) {
+      if (err instanceof AuthUnavailableError && err.status !== undefined) status = err.status;
       error = err instanceof Error ? err.message : String(err);
     }
     const attempts = head.attempts + 1;
     const nextAttemptAt = new Date(now.getTime() + backoffDelayMs(attempts, Math.random));
     await this.outbox.recordFailure(head.id, attempts, nextAttemptAt, error);
     const message = `Wysyłka ${batch.length} zdarzeń do auth nieudana (próba ${attempts}): ${error}`;
-    if (status !== null && CONTRACT_ERRORS.has(status)) this.logger.error(message);
+    if (status !== null && CONTRACT_ERROR_STATUSES.has(status)) this.logger.error(message);
     else this.logger.warn(message);
     return 'failed';
   }
