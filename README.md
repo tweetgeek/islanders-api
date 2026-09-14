@@ -8,7 +8,7 @@ Słownik domeny: `../islanders/CONTEXT.md`.
 ## Układ
 
 ```
-apps/core        API świata (NestJS) — na razie dotychczasowy kod gry, wiele światów w jednej bazie (do etapu 2)
+apps/core        API jednego świata (NestJS): tokeny z auth przez JWKS, trasy /v1, port wewnętrzny, outbox do auth
 apps/auth        usługa kont (NestJS): konta, tokeny EdDSA, JWKS, rejestr światów, zdarzenia
 packages/domain      czysta domena gry
 packages/contracts   schematy zod wspólne dla usług
@@ -29,11 +29,12 @@ npm run keys:generate -w apps/auth       # wpis do JWT_SIGNING_KEYS
 npm run db:migrate -w apps/auth
 npm run start:dev -w apps/auth           # publiczny :3000, wewnętrzny :3001
 
-# core
-cp apps/core/.env.example apps/core/.env # uzupełnij JWT_SECRET
+# core (świat world-1)
+cp apps/core/.env.example apps/core/.env   # AUTH_CLIENT_SECRET z client:create; wpis do SERVICE_CLIENTS w auth
 npm run db:migrate -w apps/core
-npm run world:create -w apps/core -- --seed 1337 --width 200 --height 200 --wind 0.3,-0.1
-npm run start:dev -w apps/core           # :3100, /api/v1
+npm run world:init -w apps/core -- --slug world-1 --name "Świat 1" --seed 1337 --width 200 --height 200 --wind 0.3,-0.1
+npm run world:open -w apps/core
+npm run start:dev -w apps/core             # publiczny :3100 (/v1), wewnętrzny :3101 (/health, /admin/v1)
 ```
 
 Baza `islanders_world_1` powstaje skryptem `docker/postgres-init.sql` tylko przy pustym
@@ -67,6 +68,18 @@ npm run keys:generate -w apps/auth
 npm run client:create -w apps/auth -- --world world-1
 ```
 Komendy kont wymagają zbudowanej aplikacji (`npm run build -w apps/auth`).
+
+## Core — komendy technika
+
+```bash
+npm run world:init -w apps/core -- --slug <s> --name <n> --seed <int> --width <int> --height <int> [--wind x,y] [--test]
+npm run world:open -w apps/core            # DRAFT → OPEN
+npm run world:close -w apps/core           # OPEN → CLOSED
+npm run world:end -w apps/core             # CLOSED → ENDED
+npm run world:open -w apps/core -- --force # przejście spoza naturalnej kolejności (np. CLOSED → OPEN)
+npm run world:status -w apps/core          # ustawienia świata i zaległości outboxa
+```
+Powrót do `DRAFT` jest niemożliwy, gdy świat ma choć jeden profil.
 
 ## Migracje
 
