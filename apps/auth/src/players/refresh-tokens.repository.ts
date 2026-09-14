@@ -17,8 +17,9 @@ export class RefreshTokensRepository {
     return row;
   }
 
-  async findByHash(tokenHash: string): Promise<RefreshTokenRow | undefined> {
-    const [row] = await this.db.select().from(refreshTokens).where(eq(refreshTokens.tokenHash, tokenHash));
+  /** Odczyt bez blokady — używany tam, gdzie trzeba najpierw poznać `playerId`, zanim zablokuje się wiersz gracza. */
+  async findByHash(tokenHash: string, client: AuthDbClient = this.db): Promise<RefreshTokenRow | undefined> {
+    const [row] = await client.select().from(refreshTokens).where(eq(refreshTokens.tokenHash, tokenHash));
     return row;
   }
 
