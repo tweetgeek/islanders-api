@@ -3,9 +3,7 @@ import { WorldWritableGuard } from './world-writable.guard.js';
 
 function contextWithWorld(status: string | undefined): ExecutionContext {
   const req = status === undefined ? {} : { world: { status } };
-  return {
-    switchToHttp: () => ({ getRequest: () => req }),
-  } as unknown as ExecutionContext;
+  return { switchToHttp: () => ({ getRequest: () => req }) } as unknown as ExecutionContext;
 }
 
 describe('WorldWritableGuard', () => {
@@ -16,15 +14,12 @@ describe('WorldWritableGuard', () => {
     expect(guard.canActivate(contextWithWorld('CLOSED'))).toBe(true);
   });
 
-  it('ENDED -> 409', () => {
-    expect(() => guard.canActivate(contextWithWorld('ENDED'))).toThrow(
-      ConflictException,
-    );
+  it('DRAFT i ENDED -> 409', () => {
+    expect(() => guard.canActivate(contextWithWorld('ENDED'))).toThrow(ConflictException);
+    expect(() => guard.canActivate(contextWithWorld('DRAFT'))).toThrow(ConflictException);
   });
 
-  it('bez ProfileGuard przed sobą zgłasza błąd programisty, nie 409', () => {
-    expect(() => guard.canActivate(contextWithWorld(undefined))).toThrow(
-      /ProfileGuard/,
-    );
+  it('bez strażników przed sobą zgłasza błąd programisty, nie 409', () => {
+    expect(() => guard.canActivate(contextWithWorld(undefined))).toThrow(/PlayerTokenGuard/);
   });
 });

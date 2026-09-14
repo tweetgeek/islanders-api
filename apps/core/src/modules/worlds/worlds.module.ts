@@ -1,28 +1,13 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Module } from '@nestjs/common';
+import { ProfilesModule } from '../profiles/profiles.module.js';
 import { SettlementsModule } from '../settlements/settlements.module.js';
-import { ProfileGuard } from './profile.guard.js';
-import { ProfilesRepository } from './profiles.repository.js';
-import { WorldWritableGuard } from './world-writable.guard.js';
-import { WorldsController } from './worlds.controller.js';
-import { WorldsRepository } from './worlds.repository.js';
-import { WorldsService } from './worlds.service.js';
+import { JoinService } from './join.service.js';
+import { WorldController } from './world.controller.js';
 
 @Module({
-  imports: [forwardRef(() => SettlementsModule)],
-  controllers: [WorldsController],
-  providers: [
-    WorldsRepository,
-    ProfilesRepository,
-    WorldsService,
-    ProfileGuard,
-    WorldWritableGuard,
-  ],
-  exports: [
-    WorldsRepository,
-    ProfilesRepository,
-    WorldsService,
-    ProfileGuard,
-    WorldWritableGuard,
-  ],
+  imports: [ProfilesModule, SettlementsModule],
+  controllers: [WorldController],
+  providers: [JoinService],
+  exports: [JoinService],
 })
 export class WorldsModule {}

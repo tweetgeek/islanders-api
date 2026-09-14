@@ -8,8 +8,8 @@ class VectorDto {
 /** Cudza nadchodząca flota nie ma `ships` ani `cargo`. */
 export class FleetDto {
   @ApiProperty() id!: string;
-  @ApiProperty({ example: '1' }) world!: string;
-  @ApiProperty() ownerId!: number;
+  @ApiProperty({ example: 'world-1' }) world!: string;
+  @ApiProperty({ format: 'uuid' }) ownerId!: string;
   @ApiProperty() ownerName!: string;
   @ApiProperty({
     enum: ['COLONIZE', 'ATTACK', 'TRANSPORT', 'EXPEDITION', 'RETURN'],

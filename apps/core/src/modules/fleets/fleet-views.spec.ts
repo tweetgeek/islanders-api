@@ -5,10 +5,12 @@ import {
   type FleetRecord,
 } from './fleet-views.js';
 
+const OWNER = '00000000-0000-4000-8000-000000000001';
+const OTHER = '00000000-0000-4000-8000-000000000002';
+
 const fleet: FleetRecord = {
   id: 'f3',
-  worldId: 1,
-  ownerId: 7,
+  ownerId: OWNER,
   ownerName: 'sebastian',
   mission: 'ATTACK',
   fromX: 10,
@@ -23,10 +25,10 @@ const fleet: FleetRecord = {
 
 describe('widoki floty', () => {
   it('ownFleetView: kształt z sekcji 4.3 specu klienta', () => {
-    expect(ownFleetView(fleet)).toEqual({
+    expect(ownFleetView(fleet, 'world-1')).toEqual({
       id: 'f3',
-      world: '1',
-      ownerId: 7,
+      world: 'world-1',
+      ownerId: OWNER,
       ownerName: 'sebastian',
       mission: 'ATTACK',
       from: { x: 10, y: 15 },
@@ -39,11 +41,11 @@ describe('widoki floty', () => {
   });
 
   it('incomingFleetView: bez ships i cargo, z departAt (Incoming Fleet ze słownika)', () => {
-    const view = incomingFleetView(fleet);
+    const view = incomingFleetView(fleet, 'world-1');
     expect(view).toEqual({
       id: 'f3',
-      world: '1',
-      ownerId: 7,
+      world: 'world-1',
+      ownerId: OWNER,
       ownerName: 'sebastian',
       mission: 'ATTACK',
       from: { x: 10, y: 15 },
@@ -56,7 +58,7 @@ describe('widoki floty', () => {
   });
 
   it('fleetViewFor: właściciel pełny, cel okrojony', () => {
-    expect('ships' in fleetViewFor(fleet, 7)).toBe(true);
-    expect('ships' in fleetViewFor(fleet, 9)).toBe(false);
+    expect('ships' in fleetViewFor(fleet, 'world-1', OWNER)).toBe(true);
+    expect('ships' in fleetViewFor(fleet, 'world-1', OTHER)).toBe(false);
   });
 });

@@ -1,10 +1,13 @@
 import { existsSync } from 'node:fs';
-import { parseEnv } from '../config/env.js';
+import { z } from 'zod';
 import { runMigrations } from './migrate.js';
 
 if (existsSync('.env')) {
   process.loadEnvFile('.env');
 }
-const env = parseEnv(process.env);
-await runMigrations(env.DATABASE_URL);
-console.log('Migracje zastosowane.');
+const url = z
+  .string()
+  .regex(/^postgres(ql)?:\/\//, 'DATABASE_URL musi zaczynać się od postgres://')
+  .parse(process.env.DATABASE_URL);
+await runMigrations(url);
+console.log('Migracje core zastosowane.');

@@ -1,61 +1,88 @@
 import { randomUUID } from 'node:crypto';
-import { INestApplication } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
+import request from 'supertest';
 import { inject } from 'vitest';
-import { AppModule } from '../../src/app.module.js';
-import { parseEnv } from '../../src/infra/config/env.js';
-import { configureApp } from '../../src/infra/http/configure-app.js';
 import type { Clock } from '@islanders/domain/time';
-import { CLOCK } from '../../src/infra/time/time.module.js';
-
-export type TestEnvOverrides = Partial<Record<string, string>>;
+import { CLOCK } from '@islanders/platform';
+import { AppModule } from '../../src/app.module.js';
+import { configureCoreApp } from '../../src/bootstrap.js';
+import { parseEnv } from '../../src/infra/config/env.js';
+import { DB, type Db } from '../../src/infra/db/db.module.js';
+import * as schema from '../../src/infra/db/schema/index.js';
+import type { InitWorldInput } from '../../src/world/world-settings.repository.js';
+import { type FakeAuth, startFakeAuth } from './fake-auth.js';
+import { createTestDatabase } from './test-db.js';
+import { TEST_ISSUER } from './tokens.js';
 
 export interface CreateTestAppOptions {
-  env?: TestEnvOverrides;
+  env?: Partial<Record<string, string>>;
   clock?: Clock;
+  /** Nadpisania wiersza `world_settings`; `null` = baza bez świata. Domyślnie świat OPEN, seed 1337, 200×200. */
+  world?: Partial<InitWorldInput> | null;
+  /** Wspólny fałszywy auth (np. dla dwóch instancji); bez niego aplikacja dostaje własny. */
+  fakeAuth?: FakeAuth;
+  /** Istniejąca baza (druga instancja tego samego świata); bez niej powstaje nowa. */
+  databaseUrl?: string;
+}
+
+export interface TestApp {
+  app: INestApplication;
+  http: () => ReturnType<typeof request>;
+  db: Db;
+  slug: string;
+  fakeAuth: FakeAuth;
+  databaseUrl: string;
+  close(): Promise<void>;
 }
 
 /**
- * Buduje aplikację identycznie jak main.ts, na bazie z Testcontainers.
- *
- * Serwer HTTP wstaje TU, raz na plik, i to jawnie na `127.0.0.1`. Oba szczegóły są konieczne,
- * a nie kosmetyczne — supertest wywołany na serwerze bez adresu robi `server.listen(0)` przed
- * KAŻDYM żądaniem i zamyka serwer po nim. `listen(0)` bez hosta wiąże gniazdo `::` (IPv6
- * z trybem dwustosowym), a takie związanie jądro macOS przepuszcza nawet wtedy, gdy port
- * trzyma już obcy proces nasłuchujący WYŁĄCZNIE po IPv4 na `127.0.0.1` (IDE, launcher gry,
- * demon sterownika — na maszynie deweloperskiej jest ich w zakresie efemerycznym kilkanaście).
- * Supertest łączy się potem pod `http://127.0.0.1:<port>`, a dla adresu IPv4 wygrywa gniazdo
- * bardziej szczegółowe, czyli OBCE. Żądanie razem z danymi logowania i nagłówkiem
- * `Authorization` trafia wtedy do cudzego procesu, a test dostaje jego odpowiedź: 404, 401
- * albo 501, zależnie od tego, co tam siedzi. Porty efemeryczne macOS idą po kolei, więc trafienie
- * jest kwestią czasu: pełne okrążenie zakresu gwarantuje kolizję z każdym takim portem.
- *
- * Jawny `listen(0, '127.0.0.1')` wiąże dokładnie ten adres, pod który uderza supertest: obcy
- * serwer na tym porcie powoduje konflikt i jądro przydziela inny port, a gdy obcy serwer stoi
- * na masce (`*` albo `::`), to MY jesteśmy dopasowaniem szczegółowym i to my dostajemy żądanie.
- * Skoro serwer już nasłuchuje, supertest go nie podnosi ani nie zamyka — z ~130 związań portu
- * na przebieg robi się dziewięć: siedem plików e2e wołają `createTestApp` raz, a
- * `health.e2e-spec.ts` woła ją trzykrotnie (jedna aplikacja na `it`), więc 6 + 3 = 9.
+ * Aplikacja jak w main.ts, na własnej bazie i z własnym fałszywym auth. Serwer wiąże się jawnie
+ * z 127.0.0.1: supertest bez adresu wiązałby `::`, co na macOS potrafi trafić w obcy proces
+ * nasłuchujący po IPv4 na tym samym porcie (spec A §15.6).
  */
-export async function createTestApp(
-  options: CreateTestAppOptions = {},
-): Promise<INestApplication> {
+export async function createTestApp(options: CreateTestAppOptions = {}): Promise<TestApp> {
+  if (options.databaseUrl && !options.world?.slug) {
+    throw new Error('Przy databaseUrl podaj world.slug — druga instancja musi znać slug świata');
+  }
+  const databaseUrl = options.databaseUrl ?? (await createTestDatabase());
+  const fakeAuth = options.fakeAuth ?? (await startFakeAuth());
+  const slug = options.world?.slug ?? `world-${randomUUID().replace(/-/g, '').slice(0, 8)}`;
+
+  if (options.world !== null && !options.databaseUrl) {
+    const client = postgres(databaseUrl, { max: 1 });
+    try {
+      await drizzle(client, { schema })
+        .insert(schema.worldSettings)
+        .values({
+          id: 1,
+          slug,
+          name: 'Świat testowy',
+          status: 'OPEN',
+          isTest: false,
+          seed: 1337,
+          width: 200,
+          height: 200,
+          windX: 0.3,
+          windY: -0.1,
+          ...options.world,
+        });
+    } finally {
+      await client.end();
+    }
+  }
+
   const env = parseEnv({
     NODE_ENV: 'test',
-    DATABASE_URL: inject('databaseUrl'),
-    JWT_SECRET: 'test-secret-test-secret-test-secret-12345',
-    JWT_ACCESS_TTL: '15m',
-    JWT_REFRESH_TTL: '30d',
-    // Testy rejestrują dziesiątki kont z jednego IP; limit produkcyjny (10) sprawdza osobno http.e2e-spec.ts
-    RATE_LIMIT_AUTH_PER_MINUTE: '100000',
-    RATE_LIMIT_IP_PER_MINUTE: '100000',
-    // Kontener Redisa jest wspólny dla całego przebiegu; osobny prefiks na aplikację,
-    // żeby kubełki jednego pliku testów nie przeciekały do następnego.
-    RATE_LIMIT_PREFIX: `rl-test-${randomUUID()}`,
+    DATABASE_URL: databaseUrl,
     REDIS_URL: inject('redisUrl'),
-    // Worker wyłączony domyślnie: testy integracyjne wołają serwis rozstrzygania wprost,
-    // a pojedynczy test e2e włącza go jawnie, żeby udowodnić, że przejściówka jest podpięta.
-    WORKER_ENABLED: 'false',
+    WORLD_SLUG: slug,
+    AUTH_INTERNAL_URL: fakeAuth.url,
+    AUTH_ISSUER: TEST_ISSUER,
+    RATE_LIMIT_IP_PER_MINUTE: '100000',
+    RATE_LIMIT_PREFIX: `rl-test-${randomUUID()}`,
     ...options.env,
   });
   let builder = Test.createTestingModule({ imports: [AppModule.forRoot(env)] });
@@ -64,7 +91,18 @@ export async function createTestApp(
   }
   const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication({ logger: ['error', 'warn'] });
-  configureApp(app, env);
+  configureCoreApp(app, env);
   await app.listen(0, '127.0.0.1');
-  return app;
+  return {
+    app,
+    http: () => request(app.getHttpServer()),
+    db: app.get<Db>(DB),
+    slug,
+    fakeAuth,
+    databaseUrl,
+    close: async () => {
+      await app.close();
+      if (!options.fakeAuth) await fakeAuth.close();
+    },
+  };
 }

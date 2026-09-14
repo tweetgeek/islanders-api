@@ -12,10 +12,9 @@ import {
 } from '@islanders/domain/rules';
 
 export interface SettlementRecord {
-  worldId: number;
   x: number;
   y: number;
-  ownerId: number;
+  ownerId: string;
   ownerName: string;
   name: string;
   biome: Biome;
@@ -27,10 +26,11 @@ export interface SettlementRecord {
 
 /** Public Data ze słownika: to, co każdy widzi o każdej osadzie. BEZ klucza `resources`. */
 export interface PublicSettlementView {
+  /** Slug świata. */
   world: string;
   x: number;
   y: number;
-  ownerId: number;
+  ownerId: string;
   ownerName: string;
   name: string;
 }
@@ -45,31 +45,22 @@ export interface OwnSettlementView extends PublicSettlementView {
   lastSyncAt: string;
 }
 
-export function publicView(s: SettlementRecord): PublicSettlementView {
-  return {
-    world: String(s.worldId),
-    x: s.x,
-    y: s.y,
-    ownerId: s.ownerId,
-    ownerName: s.ownerName,
-    name: s.name,
-  };
+export function publicView(s: SettlementRecord, worldSlug: string): PublicSettlementView {
+  return { world: worldSlug, x: s.x, y: s.y, ownerId: s.ownerId, ownerName: s.ownerName, name: s.name };
 }
 
 /** Zasoby zmaterializowane leniwie na `now` bez zapisu; `lastSyncAt = now`, żeby klient ekstrapolował od tej chwili. */
-export function ownView(s: SettlementRecord, now: Date): OwnSettlementView {
+export function ownView(s: SettlementRecord, worldSlug: string, now: Date): OwnSettlementView {
   const rate = productionPerHour(s.biome, s.buildings);
   const capacity = capacityFor(s.buildings);
   return {
-    ...publicView(s),
+    ...publicView(s, worldSlug),
     resources: currentResources(s.resources, rate, s.lastSyncAt, now, capacity),
     productionPerHour: rate,
     capacity,
     population: s.population,
     populationMax: populationMaxFor(s.buildings),
-    buildings: Object.fromEntries(
-      slotsFor(s.biome).map((slot) => [slot, s.buildings[slot] ?? 0]),
-    ),
+    buildings: Object.fromEntries(slotsFor(s.biome).map((slot) => [slot, s.buildings[slot] ?? 0])),
     lastSyncAt: now.toISOString(),
   };
 }
@@ -77,8 +68,9 @@ export function ownView(s: SettlementRecord, now: Date): OwnSettlementView {
 /** Jedyne miejsce decydujące, kto co widzi. */
 export function viewFor(
   s: SettlementRecord,
-  requesterId: number,
+  worldSlug: string,
+  requesterId: string,
   now: Date,
 ): PublicSettlementView | OwnSettlementView {
-  return s.ownerId === requesterId ? ownView(s, now) : publicView(s);
+  return s.ownerId === requesterId ? ownView(s, worldSlug, now) : publicView(s, worldSlug);
 }

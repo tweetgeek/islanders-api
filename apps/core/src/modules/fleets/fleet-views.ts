@@ -5,8 +5,7 @@ export type Mission =
 
 export interface FleetRecord {
   id: string;
-  worldId: number;
-  ownerId: number;
+  ownerId: string;
   ownerName: string;
   mission: Mission;
   fromX: number;
@@ -23,7 +22,7 @@ export interface FleetRecord {
 export interface IncomingFleetView {
   id: string;
   world: string;
-  ownerId: number;
+  ownerId: string;
   ownerName: string;
   mission: Mission;
   from: { x: number; y: number };
@@ -37,10 +36,10 @@ export interface OwnFleetView extends IncomingFleetView {
   cargo: FleetCargo;
 }
 
-export function incomingFleetView(f: FleetRecord): IncomingFleetView {
+export function incomingFleetView(f: FleetRecord, worldSlug: string): IncomingFleetView {
   return {
     id: f.id,
-    world: String(f.worldId),
+    world: worldSlug,
     ownerId: f.ownerId,
     ownerName: f.ownerName,
     mission: f.mission,
@@ -51,13 +50,10 @@ export function incomingFleetView(f: FleetRecord): IncomingFleetView {
   };
 }
 
-export function ownFleetView(f: FleetRecord): OwnFleetView {
-  return { ...incomingFleetView(f), ships: f.ships, cargo: f.cargo };
+export function ownFleetView(f: FleetRecord, worldSlug: string): OwnFleetView {
+  return { ...incomingFleetView(f, worldSlug), ships: f.ships, cargo: f.cargo };
 }
 
-export function fleetViewFor(
-  f: FleetRecord,
-  requesterId: number,
-): OwnFleetView | IncomingFleetView {
-  return f.ownerId === requesterId ? ownFleetView(f) : incomingFleetView(f);
+export function fleetViewFor(f: FleetRecord, worldSlug: string, requesterId: string): OwnFleetView | IncomingFleetView {
+  return f.ownerId === requesterId ? ownFleetView(f, worldSlug) : incomingFleetView(f, worldSlug);
 }

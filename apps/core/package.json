@@ -19,8 +19,7 @@
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "nest build && node dist/infra/db/migrate-cli.js",
-    "world:create": "nest build && node dist/cli/create-world.js"
+    "db:migrate": "nest build && node dist/infra/db/migrate-cli.js"
   },
   "dependencies": {
     "@islanders/contracts": "0.0.1",
@@ -28,10 +27,8 @@
     "@islanders/platform": "0.0.1",
     "@nestjs/common": "^12.0.1",
     "@nestjs/core": "^12.0.1",
-    "@nestjs/jwt": "^12.0.1",
     "@nestjs/platform-express": "^12.0.1",
     "@nestjs/swagger": "^12.0.1",
-    "argon2": "^0.45.1",
     "bullmq": "^6.3.4",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
