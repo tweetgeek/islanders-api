@@ -6,10 +6,13 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import { withTimeout } from '@islanders/platform';
 import { sql } from 'drizzle-orm';
 import { DB, type Db } from '../../infra/db/db.module.js';
 import { REDIS, type RedisClient } from '../../infra/redis/redis.module.js';
 import { Public } from '../auth/public.decorator.js';
+
+const CHECK_TIMEOUT_MS = 2_000;
 
 @ApiTags('health')
 @Public()
@@ -25,7 +28,9 @@ export class HealthController {
   @Get()
   async check(): Promise<{ status: 'ok'; db: 'up'; redis: 'up' }> {
     try {
-      await this.db.execute(sql`SELECT 1`);
+      // Klient Redisa ma maxRetriesPerRequest: null (wymóg BullMQ) — przy zerwanym połączeniu
+      // polecenie czekałoby w nieskończoność bez tego limitu.
+      await withTimeout(this.db.execute(sql`SELECT 1`), CHECK_TIMEOUT_MS);
     } catch (err) {
       this.logger.error(
         'Baza niedostępna',
@@ -34,7 +39,7 @@ export class HealthController {
       throw new ServiceUnavailableException({ status: 'down', db: 'down' });
     }
     try {
-      await this.redis.ping();
+      await withTimeout(this.redis.ping(), CHECK_TIMEOUT_MS);
     } catch (err) {
       this.logger.error(
         'Redis niedostępny',
