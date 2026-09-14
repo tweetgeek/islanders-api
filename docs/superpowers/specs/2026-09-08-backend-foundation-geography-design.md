@@ -1,7 +1,9 @@
 # Islanders API — spec A: fundament, geografia, konta, światy i odczyty
 
 Data: 2026-09-08
-Status: zatwierdzony w brainstormingu, czeka na plan implementacji
+Status: **zastąpiony architektonicznie przez `docs/superpowers/specs/2026-09-13-architecture-split-design.md`.** Wdrożony w monolicie; geografia z seeda,
+konta w tej samej aplikacji i `world_id` w tabelach nie obowiązują. Reguły domenowe, widoki,
+logika tokenów i sekcja 15 (pozycje przedprodukcyjne) pozostają materiałem dla etapów 1–3.
 Źródło decyzji: `docs/api-guidelines.md` (sekcje 1–7, 9–12). Ten dokument nie powtarza
 uzasadnień z wytycznych; tam, gdzie od nich odstępuje, mówi to wprost.
 

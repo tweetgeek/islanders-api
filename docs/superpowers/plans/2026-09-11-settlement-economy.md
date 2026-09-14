@@ -1,5 +1,7 @@
 # Spec B: ekonomia osady — plan implementacji
 
+> **Status: nieaktualny; etap 5 dostanie nowy plan.** Architektura zmieniona przez `docs/superpowers/specs/2026-09-13-architecture-split-design.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Gracz może rozbudowywać budynki i rekrutować wojsko przez kolejki zleceń rozłożone w czasie, z poprawnym naliczaniem zasobów także po restarcie serwera i przy wielu instancjach aplikacji.
