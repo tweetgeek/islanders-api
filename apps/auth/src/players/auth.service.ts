@@ -99,11 +99,33 @@ export class AuthService implements OnModuleInit {
     return player;
   }
 
-  /** Rotacja w jednej transakcji z blokadą wiersza starego tokenu (spec A §15.1). */
+  /**
+   * Rotacja w jednej transakcji z blokadą wiersza starego tokenu (spec A §15.1).
+   *
+   * Kolejność blokad musi być wszędzie taka sama: NAJPIERW wiersz gracza, POTEM wiersze refresh
+   * tokenów — dokładnie jak w `PlayersAdmin.setPassword`/`disable` (gracz FOR UPDATE → potem
+   * unieważnienie tokenów). Gdyby `refresh` blokował token przed graczem (odwrotna kolejność),
+   * równoległe `setPassword`/`disable` (gracz → token) i `refresh` (token → gracz) tworzyłyby
+   * cykl i PostgreSQL ubijałby jedną z transakcji błędem 40P01 (deadlock detected).
+   * Dlatego: najpierw czytamy token BEZ blokady tylko po to, żeby poznać `playerId`; blokujemy
+   * gracza `FOR SHARE`; dopiero potem ponownie czytamy token `FOR UPDATE` i na tych świeżo
+   * zablokowanych danych powtarzamy wszystkie sprawdzenia.
+   */
   refresh(refreshToken: string): Promise<AuthResult> {
     return this.db.transaction(async (tx) => {
       const now = this.clock.now();
-      const row = await this.refreshTokens.findByHashForUpdate(tx, hashRefreshToken(refreshToken));
+      const tokenHash = hashRefreshToken(refreshToken);
+      const unlocked = await this.refreshTokens.findByHash(tokenHash, tx);
+      if (!unlocked) {
+        throw new UnauthorizedException('Refresh token nieważny');
+      }
+      // FOR SHARE: czeka, aż zakończy się ewentualna transakcja PlayersAdmin.setPassword/disable
+      // (FOR UPDATE na tym samym wierszu), żeby nie wydać nowej pary tokenów tuż po tym, jak tamta
+      // uznała stare tokeny za unieważnione.
+      const player = await this.players.findById(unlocked.playerId, tx, 'share');
+      // Token mógł się zmienić między odczytem bez blokady a zablokowaniem gracza — sprawdzamy
+      // wszystko jeszcze raz na świeżo zablokowanym wierszu tokenu.
+      const row = await this.refreshTokens.findByHashForUpdate(tx, tokenHash);
       if (!row || row.expiresAt.getTime() <= now.getTime()) {
         throw new UnauthorizedException('Refresh token nieważny');
       }
@@ -114,10 +136,6 @@ export class AuthService implements OnModuleInit {
           throw new UnauthorizedException('Refresh token unieważniony');
         }
       }
-      // FOR SHARE: czeka, aż zakończy się ewentualna transakcja PlayersAdmin.setPassword/disable
-      // (FOR UPDATE na tym samym wierszu), żeby nie wydać nowej pary tokenów tuż po tym, jak tamta
-      // uznała stare tokeny za unieważnione.
-      const player = await this.players.findById(row.playerId, tx, 'share');
       if (!player || player.disabledAt) {
         throw new UnauthorizedException('Refresh token nieważny');
       }
