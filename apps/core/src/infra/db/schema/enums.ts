@@ -1,6 +1,7 @@
 import { pgEnum } from 'drizzle-orm/pg-core';
+import { WORLD_STATUSES } from '@islanders/contracts';
 
-export const worldStatus = pgEnum('world_status', ['OPEN', 'CLOSED', 'ENDED']);
+export const worldStatus = pgEnum('world_status', WORLD_STATUSES);
 export const biomeType = pgEnum('biome_type', [
   'TROPICAL',
   'TEMPERATE',

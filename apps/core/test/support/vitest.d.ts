@@ -1,6 +1,7 @@
 declare module 'vitest' {
   export interface ProvidedContext {
-    databaseUrl: string;
+    pgAdminUrl: string;
+    templateDatabase: string;
     redisUrl: string;
   }
 }

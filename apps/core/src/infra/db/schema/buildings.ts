@@ -22,7 +22,6 @@ export const biomeBuildings = pgTable(
 export const buildings = pgTable(
   'buildings',
   {
-    worldId: integer('world_id').notNull(),
     x: integer('x').notNull(),
     y: integer('y').notNull(),
     biome: biomeType('biome').notNull(),
@@ -30,16 +29,11 @@ export const buildings = pgTable(
     level: integer('level').notNull().default(0),
   },
   (t) => [
-    primaryKey({ columns: [t.worldId, t.x, t.y, t.type] }),
+    primaryKey({ name: 'buildings_pk', columns: [t.x, t.y, t.type] }),
     foreignKey({
       name: 'buildings_settlement_biome_fk',
-      columns: [t.worldId, t.x, t.y, t.biome],
-      foreignColumns: [
-        settlements.worldId,
-        settlements.x,
-        settlements.y,
-        settlements.biome,
-      ],
+      columns: [t.x, t.y, t.biome],
+      foreignColumns: [settlements.x, settlements.y, settlements.biome],
     }).onDelete('cascade'),
     foreignKey({
       name: 'buildings_biome_type_fk',

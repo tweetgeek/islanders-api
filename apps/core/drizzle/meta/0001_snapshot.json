@@ -1,18 +1,46 @@
 {
-  "id": "2855a36e-4fcd-491c-aa95-7c6581585190",
-  "prevId": "f83cd11e-d83f-452a-9835-a6ebec60333d",
+  "id": "f0ed5ed9-7754-4925-8e1e-933abd9b164d",
+  "prevId": "ebe492b4-1162-4fbc-b9f0-46c4fd8fcd22",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.worlds": {
-      "name": "worlds",
+    "public.world_settings": {
+      "name": "world_settings",
       "schema": "",
       "columns": {
         "id": {
           "name": "id",
-          "type": "serial",
+          "type": "smallint",
           "primaryKey": true,
+          "notNull": true,
+          "default": 1
+        },
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": false,
           "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "world_status",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'DRAFT'"
+        },
+        "is_test": {
+          "name": "is_test",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "seed": {
           "name": "seed",
@@ -46,16 +74,15 @@
           "notNull": true,
           "default": 0
         },
-        "status": {
-          "name": "status",
-          "type": "world_status",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'OPEN'"
-        },
         "created_at": {
           "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
@@ -68,85 +95,34 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "worlds_seed_31bit": {
-          "name": "worlds_seed_31bit",
-          "value": "\"worlds\".\"seed\" >= 0 AND \"worlds\".\"seed\" <= 2147483647"
+        "world_settings_singleton": {
+          "name": "world_settings_singleton",
+          "value": "\"world_settings\".\"id\" = 1"
+        },
+        "world_settings_seed_31bit": {
+          "name": "world_settings_seed_31bit",
+          "value": "\"world_settings\".\"seed\" >= 0 AND \"world_settings\".\"seed\" <= 2147483647"
+        },
+        "world_settings_size_positive": {
+          "name": "world_settings_size_positive",
+          "value": "\"world_settings\".\"width\" > 0 AND \"world_settings\".\"height\" > 0"
         }
       },
-      "isRLSEnabled": false
-    },
-    "public.players": {
-      "name": "players",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "email": {
-          "name": "email",
-          "type": "citext",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "nickname": {
-          "name": "nickname",
-          "type": "citext",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "password_hash": {
-          "name": "password_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "players_email_unique": {
-          "name": "players_email_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
-        },
-        "players_nickname_unique": {
-          "name": "players_nickname_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "nickname"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.profiles": {
       "name": "profiles",
       "schema": "",
       "columns": {
-        "world_id": {
-          "name": "world_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
         "player_id": {
           "name": "player_id",
-          "type": "integer",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "nickname": {
+          "name": "nickname",
+          "type": "citext",
           "primaryKey": false,
           "notNull": true
         },
@@ -171,44 +147,17 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {
-        "profiles_world_id_worlds_id_fk": {
-          "name": "profiles_world_id_worlds_id_fk",
-          "tableFrom": "profiles",
-          "tableTo": "worlds",
-          "columnsFrom": [
-            "world_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "profiles_player_id_players_id_fk": {
-          "name": "profiles_player_id_players_id_fk",
-          "tableFrom": "profiles",
-          "tableTo": "players",
-          "columnsFrom": [
-            "player_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "profiles_pk": {
-          "name": "profiles_pk",
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "profiles_nickname_unique": {
+          "name": "profiles_nickname_unique",
+          "nullsNotDistinct": false,
           "columns": [
-            "world_id",
-            "player_id"
+            "nickname"
           ]
         }
       },
-      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -217,12 +166,6 @@
       "name": "settlements",
       "schema": "",
       "columns": {
-        "world_id": {
-          "name": "world_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
         "x": {
           "name": "x",
           "type": "integer",
@@ -237,7 +180,7 @@
         },
         "owner_id": {
           "name": "owner_id",
-          "type": "integer",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
@@ -306,15 +249,9 @@
         }
       },
       "indexes": {
-        "settlements_world_owner_idx": {
-          "name": "settlements_world_owner_idx",
+        "settlements_owner_idx": {
+          "name": "settlements_owner_idx",
           "columns": [
-            {
-              "expression": "world_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
             {
               "expression": "owner_id",
               "isExpression": false,
@@ -329,28 +266,15 @@
         }
       },
       "foreignKeys": {
-        "settlements_world_id_worlds_id_fk": {
-          "name": "settlements_world_id_worlds_id_fk",
+        "settlements_owner_id_profiles_player_id_fk": {
+          "name": "settlements_owner_id_profiles_player_id_fk",
           "tableFrom": "settlements",
-          "tableTo": "worlds",
-          "columnsFrom": [
-            "world_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "settlements_owner_id_players_id_fk": {
-          "name": "settlements_owner_id_players_id_fk",
-          "tableFrom": "settlements",
-          "tableTo": "players",
+          "tableTo": "profiles",
           "columnsFrom": [
             "owner_id"
           ],
           "columnsTo": [
-            "id"
+            "player_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -360,18 +284,16 @@
         "settlements_pk": {
           "name": "settlements_pk",
           "columns": [
-            "world_id",
             "x",
             "y"
           ]
         }
       },
       "uniqueConstraints": {
-        "settlements_world_xy_biome_unique": {
-          "name": "settlements_world_xy_biome_unique",
+        "settlements_xy_biome_unique": {
+          "name": "settlements_xy_biome_unique",
           "nullsNotDistinct": false,
           "columns": [
-            "world_id",
             "x",
             "y",
             "biome"
@@ -421,12 +343,6 @@
       "name": "buildings",
       "schema": "",
       "columns": {
-        "world_id": {
-          "name": "world_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
         "x": {
           "name": "x",
           "type": "integer",
@@ -468,13 +384,11 @@
           "tableFrom": "buildings",
           "tableTo": "settlements",
           "columnsFrom": [
-            "world_id",
             "x",
             "y",
             "biome"
           ],
           "columnsTo": [
-            "world_id",
             "x",
             "y",
             "biome"
@@ -499,10 +413,9 @@
         }
       },
       "compositePrimaryKeys": {
-        "buildings_world_id_x_y_type_pk": {
-          "name": "buildings_world_id_x_y_type_pk",
+        "buildings_pk": {
+          "name": "buildings_pk",
           "columns": [
-            "world_id",
             "x",
             "y",
             "type"
@@ -530,15 +443,9 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "world_id": {
-          "name": "world_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
         "owner_id": {
           "name": "owner_id",
-          "type": "integer",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
@@ -607,15 +514,9 @@
         }
       },
       "indexes": {
-        "fleets_world_owner_idx": {
-          "name": "fleets_world_owner_idx",
+        "fleets_owner_idx": {
+          "name": "fleets_owner_idx",
           "columns": [
-            {
-              "expression": "world_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
             {
               "expression": "owner_id",
               "isExpression": false,
@@ -628,15 +529,9 @@
           "method": "btree",
           "with": {}
         },
-        "fleets_world_target_idx": {
-          "name": "fleets_world_target_idx",
+        "fleets_target_idx": {
+          "name": "fleets_target_idx",
           "columns": [
-            {
-              "expression": "world_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
             {
               "expression": "to_x",
               "isExpression": false,
@@ -657,28 +552,15 @@
         }
       },
       "foreignKeys": {
-        "fleets_world_id_worlds_id_fk": {
-          "name": "fleets_world_id_worlds_id_fk",
+        "fleets_owner_id_profiles_player_id_fk": {
+          "name": "fleets_owner_id_profiles_player_id_fk",
           "tableFrom": "fleets",
-          "tableTo": "worlds",
-          "columnsFrom": [
-            "world_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "fleets_owner_id_players_id_fk": {
-          "name": "fleets_owner_id_players_id_fk",
-          "tableFrom": "fleets",
-          "tableTo": "players",
+          "tableTo": "profiles",
           "columnsFrom": [
             "owner_id"
           ],
           "columnsTo": [
-            "id"
+            "player_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -694,12 +576,6 @@
       "name": "deposits_taken",
       "schema": "",
       "columns": {
-        "world_id": {
-          "name": "world_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
         "x": {
           "name": "x",
           "type": "integer",
@@ -749,26 +625,11 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {
-        "deposits_taken_world_id_worlds_id_fk": {
-          "name": "deposits_taken_world_id_worlds_id_fk",
-          "tableFrom": "deposits_taken",
-          "tableTo": "worlds",
-          "columnsFrom": [
-            "world_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {
-        "deposits_taken_world_id_x_y_pk": {
-          "name": "deposits_taken_world_id_x_y_pk",
+        "deposits_taken_pk": {
+          "name": "deposits_taken_pk",
           "columns": [
-            "world_id",
             "x",
             "y"
           ]
@@ -779,46 +640,27 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.refresh_tokens": {
-      "name": "refresh_tokens",
+    "public.outbox": {
+      "name": "outbox",
       "schema": "",
       "columns": {
         "id": {
           "name": "id",
           "type": "uuid",
           "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "player_id": {
-          "name": "player_id",
-          "type": "integer",
-          "primaryKey": false,
           "notNull": true
         },
-        "token_hash": {
-          "name": "token_hash",
+        "type": {
+          "name": "type",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
+        "payload": {
+          "name": "payload",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": true
-        },
-        "revoked_at": {
-          "name": "revoked_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "replaced_by_id": {
-          "name": "replaced_by_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
         },
         "created_at": {
           "name": "created_at",
@@ -826,40 +668,52 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "sent_at": {
+          "name": "sent_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "next_attempt_at": {
+          "name": "next_attempt_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_error": {
+          "name": "last_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
-        "refresh_tokens_hash_idx": {
-          "name": "refresh_tokens_hash_idx",
+        "outbox_pending_idx": {
+          "name": "outbox_pending_idx",
           "columns": [
             {
-              "expression": "token_hash",
+              "expression": "created_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             }
           ],
-          "isUnique": true,
+          "isUnique": false,
+          "where": "\"outbox\".\"sent_at\" IS NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
         }
       },
-      "foreignKeys": {
-        "refresh_tokens_player_id_players_id_fk": {
-          "name": "refresh_tokens_player_id_players_id_fk",
-          "tableFrom": "refresh_tokens",
-          "tableTo": "players",
-          "columnsFrom": [
-            "player_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -907,6 +761,7 @@
       "name": "world_status",
       "schema": "public",
       "values": [
+        "DRAFT",
         "OPEN",
         "CLOSED",
         "ENDED"
