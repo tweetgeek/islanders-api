@@ -3,7 +3,7 @@ import type { Server } from 'node:http';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import type { Clock } from '@islanders/domain/time';
-import { CLOCK, closeServer, listenInternal } from '@islanders/platform';
+import { CLOCK, closeServer, InternalHttpServer, listenInternal } from '@islanders/platform';
 import request from 'supertest';
 import { inject } from 'vitest';
 import { AppModule } from '../../src/app.module.js';
@@ -51,6 +51,10 @@ export async function createTestApp(options: CreateTestAppOptions = {}): Promise
   configureAuthApp(app, env);
   await app.listen(0, '127.0.0.1');
   const internal: Server = await listenInternal(app, 0, '127.0.0.1');
+  // Jak main.ts — dzięki temu app.close() (wywoływane niżej i przez enableShutdownHooks) też
+  // zamyka serwer wewnętrzny; closeServer toleruje, że ten sam serwer zostanie zamknięty tu
+  // ręcznie i drugi raz przez cykl życia Nesta.
+  app.get(InternalHttpServer).attach(internal);
   return {
     app,
     publicHttp: () => request(app.getHttpServer()),

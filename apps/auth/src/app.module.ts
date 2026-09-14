@@ -4,6 +4,7 @@ import {
   AllExceptionsFilter,
   AppConfigModule,
   HealthModule,
+  InternalHttpServer,
   RateLimitModule,
   RedisModule,
   ServerTimeInterceptor,
@@ -40,6 +41,7 @@ export class AppModule {
       providers: [
         { provide: APP_INTERCEPTOR, useClass: ServerTimeInterceptor },
         { provide: APP_FILTER, useClass: AllExceptionsFilter },
+        InternalHttpServer,
       ],
     };
   }
