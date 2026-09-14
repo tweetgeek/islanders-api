@@ -59,6 +59,32 @@ describe('auth: role, blokada i tools (e2e)', () => {
     await expect(admin.setPassword(a.email, 'krotkie')).rejects.toThrow(/8 znaków/);
   });
 
+  it('rotowany refresh token (w oknie łaski) nie przeżywa zmiany hasła', async () => {
+    const a = await registerPlayer(t);
+    const rotated = await t
+      .publicHttp()
+      .post('/v1/auth/refresh')
+      .send({ refreshToken: a.refreshToken })
+      .expect(200);
+    const tokenB = rotated.body.refreshToken as string;
+    await admin.setPassword(a.email, 'kolejne-haslo-789');
+    await t.publicHttp().post('/v1/auth/refresh').send({ refreshToken: a.refreshToken }).expect(401);
+    await t.publicHttp().post('/v1/auth/refresh').send({ refreshToken: tokenB }).expect(401);
+  });
+
+  it('rotowany refresh token (w oknie łaski) nie przeżywa zablokowania konta', async () => {
+    const a = await registerPlayer(t);
+    const rotated = await t
+      .publicHttp()
+      .post('/v1/auth/refresh')
+      .send({ refreshToken: a.refreshToken })
+      .expect(200);
+    const tokenB = rotated.body.refreshToken as string;
+    await admin.disable(a.email);
+    await t.publicHttp().post('/v1/auth/refresh').send({ refreshToken: a.refreshToken }).expect(401);
+    await t.publicHttp().post('/v1/auth/refresh').send({ refreshToken: tokenB }).expect(401);
+  });
+
   it('tools/login: 403 bez roli admin, token aud islanders-tools ważny 1 h z nią', async () => {
     const a = await registerPlayer(t);
     await t.publicHttp().post('/v1/auth/tools/login').send({ email: a.email, password: a.password }).expect(403);

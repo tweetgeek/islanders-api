@@ -63,6 +63,10 @@ export class PlayersAdmin {
     const player = await this.require(email);
     const hash = await argon2.hash(password, ARGON2_OPTIONS);
     await this.db.transaction(async (tx) => {
+      // Blokada wiersza gracza FOR UPDATE serializuje z `AuthService.refresh` (FOR SHARE): bez tego
+      // równoległe odświeżenie mogłoby wstawić nowy refresh token już po tym, jak ta transakcja
+      // odczytała stan tokenów, ale przed ich unieważnieniem.
+      await this.players.findById(player.id, tx, 'update');
       await this.players.setPasswordHash(tx, player.id, hash);
       await this.refreshTokens.revokeAllForPlayer(tx, player.id, this.clock.now());
     });
@@ -72,6 +76,8 @@ export class PlayersAdmin {
     const player = await this.require(email);
     const now = this.clock.now();
     await this.db.transaction(async (tx) => {
+      // Jak w setPassword — FOR UPDATE zanim odczytamy/unieważnimy tokeny.
+      await this.players.findById(player.id, tx, 'update');
       await this.players.setDisabledAt(tx, player.id, now);
       await this.refreshTokens.revokeAllForPlayer(tx, player.id, now);
     });

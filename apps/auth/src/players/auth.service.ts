@@ -114,7 +114,10 @@ export class AuthService implements OnModuleInit {
           throw new UnauthorizedException('Refresh token unieważniony');
         }
       }
-      const player = await this.players.findById(row.playerId, tx);
+      // FOR SHARE: czeka, aż zakończy się ewentualna transakcja PlayersAdmin.setPassword/disable
+      // (FOR UPDATE na tym samym wierszu), żeby nie wydać nowej pary tokenów tuż po tym, jak tamta
+      // uznała stare tokeny za unieważnione.
+      const player = await this.players.findById(row.playerId, tx, 'share');
       if (!player || player.disabledAt) {
         throw new UnauthorizedException('Refresh token nieważny');
       }

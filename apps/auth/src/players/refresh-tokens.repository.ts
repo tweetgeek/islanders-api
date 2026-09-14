@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { DB, type AuthDb, type AuthDbClient } from '../db/db.js';
 import { refreshTokens } from '../db/schema/index.js';
 
@@ -37,10 +37,24 @@ export class RefreshTokensRepository {
     await client.update(refreshTokens).set({ revokedAt: at, replacedById }).where(eq(refreshTokens.id, id));
   }
 
+  /**
+   * Unieważnia też tokeny zrotowane w ostatnich 60 s (`replacedById` ustawione): zdjęcie znacznika
+   * rotacji zamyka okno łaski, więc stary token nie namierzy już nowej pary po zmianie hasła czy
+   * zablokowaniu konta. `revokedAt` zostaje przy pierwotnym czasie rotacji — COALESCE nadpisuje
+   * je tylko dla tokenów jeszcze nieunieważnionych.
+   */
   async revokeAllForPlayer(client: AuthDbClient, playerId: string, at: Date): Promise<void> {
     await client
       .update(refreshTokens)
-      .set({ revokedAt: at, replacedById: null })
-      .where(and(eq(refreshTokens.playerId, playerId), isNull(refreshTokens.revokedAt)));
+      .set({
+        revokedAt: sql`coalesce(${refreshTokens.revokedAt}, ${at.toISOString()}::timestamptz)`,
+        replacedById: null,
+      })
+      .where(
+        and(
+          eq(refreshTokens.playerId, playerId),
+          or(isNull(refreshTokens.revokedAt), isNotNull(refreshTokens.replacedById)),
+        ),
+      );
   }
 }

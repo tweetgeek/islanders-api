@@ -22,8 +22,18 @@ export class PlayersRepository {
       | undefined;
   }
 
-  async findById(id: string, client: AuthDbClient = this.db): Promise<PlayerRow | undefined> {
-    const [row] = await client.select().from(players).where(eq(players.id, id));
+  /**
+   * `lock`: `'update'` serializuje z innymi blokadami wiersza (np. zmiana hasła, blokada konta);
+   * `'share'` pozwala kilku odczytom iść równolegle, ale czeka na zwolnienie blokady `'update'` —
+   * używane przy odświeżaniu tokenu, żeby nie wyścignąć unieważnienia refresh tokenów.
+   */
+  async findById(
+    id: string,
+    client: AuthDbClient = this.db,
+    lock?: 'update' | 'share',
+  ): Promise<PlayerRow | undefined> {
+    const query = client.select().from(players).where(eq(players.id, id));
+    const [row] = lock ? await query.for(lock) : await query;
     return row as PlayerRow | undefined;
   }
 
