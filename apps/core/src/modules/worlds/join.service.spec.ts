@@ -3,7 +3,7 @@ import { STARTER_PACK, startingBuildings } from '@islanders/domain/balance';
 import type { Clock } from '@islanders/domain/time';
 import { islandAt } from '../../domain/geography/index.js';
 import type { Db } from '../../infra/db/db.module.js';
-import type { WorldSettingsRow } from '../../world/world-settings.repository.js';
+import type { WorldSettingsRepository, WorldSettingsRow } from '../../world/world-settings.repository.js';
 import type { ProfileRow, ProfilesRepository } from '../profiles/profiles.repository.js';
 import type { SettlementRecord } from '../settlements/settlement-views.js';
 import type { SettlementsRepository } from '../settlements/settlements.repository.js';
@@ -26,7 +26,14 @@ function uniqueViolation(constraint: string): Error {
   });
 }
 
-function makeJoinService(failures: { settlement?: (Error | null)[]; profile?: (Error | null)[] } = {}) {
+function makeJoinService(
+  failures: { settlement?: (Error | null)[]; profile?: (Error | null)[] } = {},
+  worldStatusOnShare: WorldSettingsRow['status'] = 'OPEN',
+) {
+  const worlds = {
+    findForShare: () => Promise.resolve({ ...world, status: worldStatusOnShare }),
+  } as unknown as WorldSettingsRepository;
+
   const profileAttempts: { homeX: number; homeY: number }[] = [];
   const profiles = {
     find: () => Promise.resolve(undefined),
@@ -58,7 +65,7 @@ function makeJoinService(failures: { settlement?: (Error | null)[]; profile?: (E
   // Atrapa transakcji: uruchamia ciało i przepuszcza jego odrzucenie, tak jak drizzle.
   const db = { transaction: (fn: (tx: unknown) => Promise<void>) => fn({}) } as unknown as Db;
   const clock: Clock = { now: () => new Date('2026-09-14T12:00:00.000Z') };
-  return { service: new JoinService(profiles, settlements, db, clock), insertAttempts, profileAttempts };
+  return { service: new JoinService(worlds, profiles, settlements, db, clock), insertAttempts, profileAttempts };
 }
 
 describe('JoinService.join — ponawianie i klasyfikacja błędów bazy', () => {
@@ -93,6 +100,13 @@ describe('JoinService.join — ponawianie i klasyfikacja błędów bazy', () => 
     const { service, profileAttempts } = makeJoinService();
     await expect(service.join({ ...world, status: 'CLOSED' }, PLAYER)).rejects.toBeInstanceOf(ConflictException);
     expect(profileAttempts).toHaveLength(0);
+  });
+
+  it('świat zmienił status na CLOSED tuż po nieblokowanym odczycie -> 409 z blokady FOR SHARE, bez wstawiania profilu', async () => {
+    const { service, profileAttempts, insertAttempts } = makeJoinService({}, 'CLOSED');
+    await expect(service.join(world, PLAYER)).rejects.toThrow(/Świat nie przyjmuje nowych graczy/);
+    expect(profileAttempts).toHaveLength(0);
+    expect(insertAttempts).toHaveLength(0);
   });
 
   it('błąd niezwiązany z unikalnością leci dalej, a pętla go nie połyka', async () => {

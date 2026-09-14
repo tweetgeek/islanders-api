@@ -49,6 +49,16 @@ export class WorldSettingsRepository {
     return row;
   }
 
+  /** Blokada współdzielona: nie blokuje innych czytelników, ale serializuje się z `findForUpdate`. */
+  async findForShare(client: DbClient): Promise<WorldSettingsRow | undefined> {
+    const [row] = await client
+      .select()
+      .from(worldSettings)
+      .where(eq(worldSettings.id, 1))
+      .for('share');
+    return row;
+  }
+
   async insert(client: DbClient, input: InitWorldInput): Promise<WorldSettingsRow> {
     const [row] = await client.insert(worldSettings).values({ id: 1, ...input }).returning();
     return row;

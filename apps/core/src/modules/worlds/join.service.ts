@@ -6,7 +6,7 @@ import type { PlayerPrincipal } from '../../access/player-request.js';
 import { DB, type Db } from '../../infra/db/db.module.js';
 import { isUniqueViolation } from '../../infra/db/pg-errors.js';
 import { CLOCK } from '../../infra/time/time.module.js';
-import type { WorldSettingsRow } from '../../world/world-settings.repository.js';
+import { WorldSettingsRepository, type WorldSettingsRow } from '../../world/world-settings.repository.js';
 import { ProfilesRepository } from '../profiles/profiles.repository.js';
 import { coordKey } from '../settlements/bbox.js';
 import { type OwnSettlementView, ownView } from '../settlements/settlement-views.js';
@@ -19,6 +19,7 @@ const DEFAULT_SETTLEMENT_NAME = 'Osada';
 @Injectable()
 export class JoinService {
   constructor(
+    private readonly worlds: WorldSettingsRepository,
     private readonly profiles: ProfilesRepository,
     private readonly settlements: SettlementsRepository,
     @Inject(DB) private readonly db: Db,
@@ -27,6 +28,7 @@ export class JoinService {
 
   /** Zakłada profil i osadę domową w jednej transakcji; powtarza losowanie po konflikcie klucza osady. */
   async join(world: WorldSettingsRow, player: PlayerPrincipal, name?: string): Promise<OwnSettlementView> {
+    // Szybka ścieżka na nieblokowanym odczycie sprzed transakcji — omija bazę dla oczywistych przypadków.
     if (world.status !== 'OPEN') {
       throw new ConflictException('Świat nie przyjmuje nowych graczy');
     }
@@ -44,6 +46,12 @@ export class JoinService {
       const now = this.clock.now();
       try {
         await this.db.transaction(async (tx) => {
+          // Blokada FOR SHARE serializuje się z WorldStatusService (FOR UPDATE): jeśli świat
+          // przestał być OPEN tuż po nieblokowanym odczycie wyżej, ta transakcja to zobaczy.
+          const current = await this.worlds.findForShare(tx);
+          if (current?.status !== 'OPEN') {
+            throw new ConflictException('Świat nie przyjmuje nowych graczy');
+          }
           await this.profiles.create(tx, {
             playerId: player.id,
             nickname: player.nickname,
