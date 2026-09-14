@@ -30,7 +30,8 @@ pseudonimu.
 | 2 | Start repliki przy niedostępnym auth | Ostatni poprawny JWKS zapisany we własnym Redisie świata (`auth:jwks`, TTL 7 dni), wspólny dla replik |
 | 3 | Podział ról procesu | `CORE_ROLE=all\|api\|worker` od razu; zastępuje `WORKER_ENABLED` |
 | 4 | Świat bez profilu gracza | `GET /v1/world` działa bez profilu (`profile: null`); osady, floty i zapisy wymagają profilu |
-| 5 | Przejścia statusu świata | Każde przejście możliwe; poza naturalnym porządkiem `DRAFT → OPEN → CLOSED → ENDED` wymaga `--force` |
+| 5 | Przejścia statusu świata | Każde przejście możliwe; poza naturalnym porządkiem `DRAFT → OPEN → CLOSED → ENDED` wymaga `--force`; przejście do `DRAFT` zabronione, gdy istnieje choć jeden profil |
+| 6 | Widoczność świata `DRAFT` | Na porcie publicznym tylko dla ról `tester` i `admin`; pozostali gracze dostają 404 na każdej trasie |
 
 ## 3. Dane
 
@@ -72,7 +73,9 @@ Znikają `worlds`, `players`, `refresh_tokens`.
 - `PlayerTokenGuard` (globalny na trasach gracza): `jwtVerify` z `algorithms: ['EdDSA']`,
   `issuer: AUTH_ISSUER`, `audience: islanders-worlds`, a potem `worldsAccessClaimsSchema`.
   Ustawia `req.player = { id, roles, nickname }` i `req.rateLimitSubject = player:<id>`.
-  Na świecie z `is_test` wymaga roli `tester` albo `admin` (403).
+  Na świecie z `is_test` wymaga roli `tester` albo `admin` (403). Na świecie w statusie `DRAFT`
+  gracz bez roli `tester` albo `admin` dostaje 404 „Świat nie istnieje” (słownik: `DRAFT` jest
+  niewidoczny dla graczy poza testerami).
 - `ProfileGuard`: profil `req.player.id` musi istnieć (403); dopina `req.profile` i `req.world`.
 - `WorldWritableGuard`: zapis odrzucany (409) przy `DRAFT` i `ENDED`.
 - `ToolsTokenGuard` (API admina): `audience: islanders-tools`, rola `admin` (403).
@@ -148,7 +151,10 @@ Kontekst aplikacji bez serwerów HTTP i bez prac w tle.
 | `world:status` | ustawienia świata i stan outboxa |
 
 Przejścia bez `--force`: `DRAFT → OPEN`, `OPEN → CLOSED`, `CLOSED → ENDED`. Każde inne przejście
-wymaga `--force` i drukuje ostrzeżenie; ustawienie tego samego statusu to błąd. Zmiana statusu i
+wymaga `--force` i drukuje ostrzeżenie; ustawienie tego samego statusu to błąd. Przejście do
+`DRAFT` jest odrzucane (także z `--force`), gdy istnieje choć jeden profil — `DRAFT` to świat
+przygotowywany, zanim ktokolwiek do niego dołączył, a od etapu 3 status, w którym wolno
+nadpisać mapę. Zmiana statusu i
 wpis `WorldStatusChanged` w outboxie w jednej transakcji.
 
 ## 8. Konfiguracja
@@ -161,7 +167,8 @@ wpis `WorldStatusChanged` w outboxie w jednej transakcji.
 
 ## 9. Testy
 
-**Jednostkowe:** przejścia statusu (naturalne, wymuszone, ten sam status); backoff outboxa
+**Jednostkowe:** przejścia statusu (naturalne, wymuszone, ten sam status, `DRAFT` przy
+istniejących profilach odrzucone także z `--force`); backoff outboxa
 (granice 2 s i 5 min, jitter w zakresie); circuit breaker (otwarcie po 5 błędach, próba po 30 s,
 zamknięcie po sukcesie); limit odświeżania JWKS przy nieznanym `kid`; widok `GET /v1/world`
 z profilem, bez profilu i z profilem bez osady domowej.
@@ -177,6 +184,8 @@ z profilem, bez profilu i z profilem bez osady domowej.
 - `GET /v1/world` bez profilu → `profile: null`; dołączenie → pełna osada i `PlayerJoinedWorld`
   dostarczone do fałszywego auth; drugie dołączenie → 409; `DRAFT` i `CLOSED` → 409 na `join`;
 - świat testowy bez roli `tester` → 403;
+- świat `DRAFT`: gracz bez roli → 404 na `GET /v1/world` i `POST /v1/join`; `tester` → 200 na
+  `GET /v1/world`;
 - token tools na trasie gracza → 401; token gracza na `/admin/v1/world` → 401; `admin` → 200;
 - `/health/*` i `/admin/*` na porcie publicznym → 404;
 - zmiana statusu przez serwis CLI → `WorldStatusChanged` dostarczone; zgłoszenie świata przy
