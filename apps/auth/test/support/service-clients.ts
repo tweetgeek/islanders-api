@@ -14,9 +14,10 @@ export const testServiceClients = {
   world1: client('world-1'),
   world2: client('world-2'),
   world2Test: client('world-2-test'),
-  // world-9: żaden test nie wolno mu zarejestrować w rejestrze — zadanie 10 używa go
-  // do przypadku „świat nieznany rejestrowi → 409". Vitest nie gwarantuje kolejności
-  // plików e2e i wszystkie pliki dzielą jedną bazę.
+  // world-9: żadnemu testowi nie wolno go zarejestrować w rejestrze światów — służy
+  // przypadkom „świat nieznany rejestrowi → 409". Vitest nie gwarantuje kolejności
+  // plików e2e i wszystkie pliki dzielą jedną bazę, więc świeży, nigdy nie rejestrowany
+  // slug jest jedynym pewnym sposobem, żeby taki przypadek nie był zależny od kolejności.
   unregistered: client('world-9'),
 };
 

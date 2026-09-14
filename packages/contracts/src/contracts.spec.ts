@@ -77,6 +77,22 @@ describe('kontrakty', () => {
     expect(worldRegistrationSchema.safeParse({ ...reg, extra: 1 }).success).toBe(false);
   });
 
+  it('rejestracja świata odrzuca URL-e spoza http/https', () => {
+    const reg = {
+      name: 'Świat 1',
+      publicUrl: 'https://world-1.islanders.online',
+      adminUrl: 'http://core-world-1:3001',
+      status: 'OPEN',
+      isTest: false,
+    };
+    expect(worldRegistrationSchema.safeParse({ ...reg, publicUrl: 'javascript:alert(1)' }).success).toBe(
+      false,
+    );
+    expect(worldRegistrationSchema.safeParse({ ...reg, adminUrl: 'javascript:alert(1)' }).success).toBe(
+      false,
+    );
+  });
+
   it('partia zdarzeń: 1–100, znany typ, poprawne pola typu', () => {
     expect(eventBatchSchema.safeParse({ events: [joined()] }).success).toBe(true);
     expect(eventBatchSchema.safeParse({ events: [] }).success).toBe(false);

@@ -5,10 +5,13 @@ export const WORLD_STATUSES = ['DRAFT', 'OPEN', 'CLOSED', 'ENDED'] as const;
 export const worldStatusSchema = z.enum(WORLD_STATUSES);
 export type WorldStatus = z.infer<typeof worldStatusSchema>;
 
+// Tylko http/https — bez tego np. `javascript:alert(1)` przeszłoby walidację jako poprawny URL.
+const httpOrHttpsUrlSchema = z.url({ protocol: /^https?$/ });
+
 export const worldRegistrationSchema = z.strictObject({
   name: z.string().min(1).max(64),
-  publicUrl: z.url(),
-  adminUrl: z.url(),
+  publicUrl: httpOrHttpsUrlSchema,
+  adminUrl: httpOrHttpsUrlSchema,
   status: worldStatusSchema,
   isTest: z.boolean(),
 });

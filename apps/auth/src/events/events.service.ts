@@ -94,7 +94,10 @@ export class EventsService {
               set: { joinedAt: new Date(event.joinedAt) },
             });
         } catch (err) {
-          if (isForeignKeyViolation(err)) throw new UnknownPlayer();
+          // Nazwa ograniczenia z apps/auth/drizzle/0001_initial_schema.sql — bez niej naruszenie
+          // klucza obcego world_slug (którego tu nie powinno być, bo świat sprawdziliśmy wyżej)
+          // też ciche zamieniłoby się w „nieznany gracz".
+          if (isForeignKeyViolation(err, 'profiles_player_id_players_id_fk')) throw new UnknownPlayer();
           throw err;
         }
         return;

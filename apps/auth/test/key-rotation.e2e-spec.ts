@@ -18,7 +18,10 @@ describe('auth: rotacja kluczy podpisu (e2e)', () => {
       const jwks = (await during.publicHttp().get('/.well-known/jwks.json').expect(200)).body;
       expect(jwks.keys.map((k: { kid: string }) => k.kid).sort()).toEqual([k1.kid, k2.kid].sort());
       await expect(
-        jwtVerify(player.accessToken, createLocalJWKSet(jwks), { audience: 'islanders-worlds' }),
+        jwtVerify(player.accessToken, createLocalJWKSet(jwks), {
+          audience: 'islanders-worlds',
+          issuer: 'https://users.islanders.test',
+        }),
       ).resolves.toBeDefined();
       const fresh = await during
         .publicHttp()
@@ -35,7 +38,10 @@ describe('auth: rotacja kluczy podpisu (e2e)', () => {
     try {
       const jwks = (await after.publicHttp().get('/.well-known/jwks.json').expect(200)).body;
       await expect(
-        jwtVerify(player.accessToken, createLocalJWKSet(jwks), { audience: 'islanders-worlds' }),
+        jwtVerify(player.accessToken, createLocalJWKSet(jwks), {
+          audience: 'islanders-worlds',
+          issuer: 'https://users.islanders.test',
+        }),
       ).rejects.toThrow();
     } finally {
       await after.close();
