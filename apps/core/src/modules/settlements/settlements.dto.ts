@@ -10,10 +10,10 @@ class ResourcesDto {
 
 /** Cudza osada ma tylko pola publiczne; własna dodatkowo pola od `resources` w dół. Brak `resources` = osada cudza. */
 export class SettlementDto {
-  @ApiProperty({ example: '1' }) world!: string;
+  @ApiProperty({ example: 'world-1' }) world!: string;
   @ApiProperty() x!: number;
   @ApiProperty() y!: number;
-  @ApiProperty() ownerId!: number;
+  @ApiProperty({ format: 'uuid' }) ownerId!: string;
   @ApiProperty() ownerName!: string;
   @ApiProperty() name!: string;
   @ApiPropertyOptional({ type: ResourcesDto }) resources?: ResourcesDto;

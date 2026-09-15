@@ -1,46 +1,34 @@
-import type { ProfileRow } from './profiles.repository.js';
-import type { WorldRow } from './worlds.repository.js';
+import type { WorldSettingsRow } from '../../world/world-settings.repository.js';
+import type { ProfileRow } from '../profiles/profiles.repository.js';
 
-export interface WorldListItem {
-  id: string;
+export interface WorldView {
+  slug: string;
+  name: string;
+  status: WorldSettingsRow['status'];
+  isTest: boolean;
+  /** Do etapu 3 klient liczy geografię z seeda. */
   seed: number;
   size: { w: number; h: number };
   wind: { x: number; y: number };
-  status: WorldRow['status'];
-  joined: boolean;
+  profile: { playerId: string; homeSettlement: { x: number; y: number } | null } | null;
 }
 
-export interface WorldStateView extends Omit<WorldListItem, 'joined'> {
-  playerId: number;
-  homeSettlement: { x: number; y: number } | null;
-}
-
-function base(world: WorldRow): Omit<WorldListItem, 'joined'> {
+/** `GET /v1/world`: dane publiczne świata i profil gracza albo `null` przed dołączeniem. `serverTime` dokłada interceptor. */
+export function worldView(world: WorldSettingsRow, profile: ProfileRow | undefined): WorldView {
   return {
-    id: String(world.id),
+    slug: world.slug,
+    name: world.name,
+    status: world.status,
+    isTest: world.isTest,
     seed: world.seed,
     size: { w: world.width, h: world.height },
     wind: { x: world.windX, y: world.windY },
-    status: world.status,
-  };
-}
-
-export function worldListItem(world: WorldRow, joined: boolean): WorldListItem {
-  return { ...base(world), joined };
-}
-
-/** Kształt z sekcji 4.1 specu klienta; `serverTime` dokłada interceptor. */
-export function worldState(
-  world: WorldRow,
-  profile: ProfileRow,
-  playerId: number,
-): WorldStateView {
-  return {
-    ...base(world),
-    playerId,
-    homeSettlement:
-      profile.homeX === null || profile.homeY === null
-        ? null
-        : { x: profile.homeX, y: profile.homeY },
+    profile: profile
+      ? {
+          playerId: profile.playerId,
+          homeSettlement:
+            profile.homeX === null || profile.homeY === null ? null : { x: profile.homeX, y: profile.homeY },
+        }
+      : null,
   };
 }

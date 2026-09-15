@@ -1,139 +1,75 @@
-import { INestApplication } from '@nestjs/common';
-import request from 'supertest';
+import { randomUUID } from 'node:crypto';
 import { FixedClock } from '@islanders/domain/time';
-import {
-  bearer,
-  createWorld,
-  joinWorld,
-  registerPlayer,
-} from './support/fixtures.js';
-import { createTestApp } from './support/test-app.js';
+import { joinWorld } from './support/fixtures.js';
+import { createTestApp, type TestApp } from './support/test-app.js';
+import { bearer, signPlayerToken } from './support/tokens.js';
 
-describe('warstwa HTTP (e2e)', () => {
-  let app: INestApplication;
-  const clock = new FixedClock(new Date('2026-09-08T12:00:00.000Z'));
+describe('warstwa HTTP core (e2e)', () => {
+  let t: TestApp;
+  const clock = new FixedClock(new Date('2026-09-14T12:00:00.000Z'));
 
   beforeAll(async () => {
-    // Limit auth produkcyjny (10/min), w przeciwieństwie do domyślnego środowiska testowego.
     // Limit gracza obniżony do 5, żeby test kolejności strażników nie musiał słać 121 żądań.
-    app = await createTestApp({
-      clock,
-      env: {
-        RATE_LIMIT_AUTH_PER_MINUTE: '10',
-        RATE_LIMIT_SUBJECT_PER_MINUTE: '5',
-      },
-    });
+    t = await createTestApp({ clock, env: { RATE_LIMIT_SUBJECT_PER_MINUTE: '5' } });
   });
   afterAll(async () => {
-    await app.close();
+    await t.close();
   });
 
-  const http = () => request(app.getHttpServer());
+  it('X-Server-Time na każdej odpowiedzi, także 404 i 401; serverTime w obiektach, nie w tablicach', async () => {
+    const notFound = await t.http().get('/nie-ma').expect(404);
+    expect(notFound.headers['x-server-time']).toBe('2026-09-14T12:00:00.000Z');
+    const unauthorized = await t.http().get('/v1/world').expect(401);
+    expect(unauthorized.headers['x-server-time']).toBe('2026-09-14T12:00:00.000Z');
 
-  it('X-Server-Time na każdej odpowiedzi, także 404 i 401; serverTime w state i join, nie w tablicach', async () => {
-    const health = await http().get('/api/v1/health').expect(200);
-    expect(health.headers['x-server-time']).toBe('2026-09-08T12:00:00.000Z');
-    expect(health.body.serverTime).toBe('2026-09-08T12:00:00.000Z');
-
-    const notFound = await http().get('/api/v1/nie-ma').expect(404);
-    expect(notFound.headers['x-server-time']).toBe('2026-09-08T12:00:00.000Z');
-    const unauthorized = await http().get('/api/v1/worlds').expect(401);
-    expect(unauthorized.headers['x-server-time']).toBe(
-      '2026-09-08T12:00:00.000Z',
-    );
-
-    const p = await registerPlayer(app);
-    const world = await createWorld(app);
-    const joined = await joinWorld(app, p.accessToken, world.id);
-    expect(joined.serverTime).toBe('2026-09-08T12:00:00.000Z');
-    const list = await http()
-      .get(`/api/v1/worlds/${world.id}/settlements`)
-      .set('Authorization', bearer(p.accessToken))
-      .expect(200);
+    const p = await signPlayerToken();
+    const joined = await joinWorld(t, p);
+    expect(joined.serverTime).toBe('2026-09-14T12:00:00.000Z');
+    const list = await t.http().get('/v1/settlements').set('Authorization', bearer(p.token)).expect(200);
     expect(Array.isArray(list.body)).toBe(true);
-    expect(list.headers['x-server-time']).toBe('2026-09-08T12:00:00.000Z');
   });
 
-  it('login ograniczony do 10 na minutę na IP -> 429, po minucie znów działa', async () => {
-    const p = await registerPlayer(app);
-    for (let i = 0; i < 10; i++) {
-      await http()
-        .post('/api/v1/auth/login')
-        .send({ email: p.email, password: 'zle' })
-        .expect(401);
-    }
-    const limited = await http()
-      .post('/api/v1/auth/login')
-      .send({ email: p.email, password: p.password })
-      .expect(429);
-    expect(limited.body.message).toMatch(/Za dużo żądań/);
-    expect(limited.headers['retry-after']).toBeDefined();
-    clock.advance(60_001);
-    try {
-      await http()
-        .post('/api/v1/auth/login')
-        .send({ email: p.email, password: p.password })
-        .expect(200);
-    } finally {
-      // Bez `finally` porażka powyżej zostawiłaby przesunięty zegar i zamieniła jedną
-      // porażkę w kaskadę mylących porażek w kolejnych testach tego pliku.
-      clock.advance(-60_001);
-    }
-  });
-
-  it('koperta błędów Nest dla 400 i 409', async () => {
-    const res = await http().post('/api/v1/auth/register').send({}).expect(400);
+  it('koperta błędów Nest dla 400', async () => {
+    const p = await signPlayerToken();
+    const res = await t.http().post('/v1/join').set('Authorization', bearer(p.token)).send({ name: 42 }).expect(400);
     expect(res.body.statusCode).toBe(400);
     expect(Array.isArray(res.body.message)).toBe(true);
   });
 
-  // Pilnuje kolejności importów w AppModule: RateLimitGuard musi startować PO JwtAuthGuard,
-  // inaczej nie zobaczy `req.playerId` i potraktuje trasę uwierzytelnioną jak anonimową (bez limitu).
-  it('trasa uwierzytelniona limitowana po graczu, nie po IP', async () => {
-    const a = await registerPlayer(app);
-    const b = await registerPlayer(app);
+  // Pilnuje kolejności strażników w AccessModule: RateLimitGuard musi działać PO PlayerTokenGuard.
+  it('trasa gracza limitowana po graczu, nie po adresie', async () => {
+    const a = await signPlayerToken();
+    const b = await signPlayerToken();
     for (let i = 0; i < 5; i++) {
-      await http()
-        .get('/api/v1/worlds')
-        .set('Authorization', bearer(a.accessToken))
-        .expect(200);
+      await t.http().get('/v1/world').set('Authorization', bearer(a.token)).expect(200);
     }
-    const limited = await http()
-      .get('/api/v1/worlds')
-      .set('Authorization', bearer(a.accessToken))
-      .expect(429);
+    const limited = await t.http().get('/v1/world').set('Authorization', bearer(a.token)).expect(429);
     expect(limited.body.message).toMatch(/Za dużo żądań/);
-    // to samo IP, inny gracz — kubełek jest po graczu, więc wolno
-    await http()
-      .get('/api/v1/worlds')
-      .set('Authorization', bearer(b.accessToken))
-      .expect(200);
+    expect(limited.headers['retry-after']).toBeDefined();
+    await t.http().get('/v1/world').set('Authorization', bearer(b.token)).expect(200);
   });
 
-  it('zalew złymi tokenami zużywa sufit po adresie, zanim zadziała strażnik JWT', async () => {
-    const floodApp = await createTestApp({ env: { RATE_LIMIT_IP_PER_MINUTE: '3' } });
+  it('zalew złymi tokenami zużywa sufit po adresie, zanim zadziała strażnik tokenu', async () => {
+    const flood = await createTestApp({ env: { RATE_LIMIT_IP_PER_MINUTE: '3' } });
     try {
-      const flood = () =>
-        request(floodApp.getHttpServer())
-          .get('/api/v1/worlds')
-          .set('Authorization', 'Bearer zly.token.jwt');
-      for (let i = 0; i < 3; i++) await flood().expect(401);
-      const limited = await flood().expect(429);
+      for (let i = 0; i < 3; i++) {
+        await flood.http().get('/v1/world').set('Authorization', 'Bearer zly.token.jwt').expect(401);
+      }
+      const limited = await flood.http().get('/v1/world').set('Authorization', 'Bearer zly.token.jwt').expect(429);
       expect(limited.headers['retry-after']).toBeDefined();
     } finally {
-      await floodApp.close();
+      await flood.close();
     }
   });
 
-  it('dwie instancje na tym samym Redisie i prefiksie dzielą kubełek', async () => {
-    const shared = { RATE_LIMIT_AUTH_PER_MINUTE: '2', RATE_LIMIT_PREFIX: `rl-shared-${Date.now()}` };
+  it('dwie instancje na tym samym Redisie i prefiksie dzielą kubełek po adresie', async () => {
+    const shared = { RATE_LIMIT_IP_PER_MINUTE: '2', RATE_LIMIT_PREFIX: `rl-shared-${randomUUID()}` };
     const one = await createTestApp({ env: shared });
     const two = await createTestApp({ env: shared });
     try {
-      const body = { email: 'nikt@test.local', password: 'zle-haslo' };
-      await request(one.getHttpServer()).post('/api/v1/auth/login').send(body).expect(401);
-      await request(two.getHttpServer()).post('/api/v1/auth/login').send(body).expect(401);
-      await request(one.getHttpServer()).post('/api/v1/auth/login').send(body).expect(429);
+      await one.http().get('/v1/world').expect(401);
+      await two.http().get('/v1/world').expect(401);
+      await one.http().get('/v1/world').expect(429);
     } finally {
       await one.close();
       await two.close();
@@ -141,20 +77,28 @@ describe('warstwa HTTP (e2e)', () => {
   });
 
   it('TRUST_PROXY=1: różne X-Forwarded-For to różne kubełki po adresie', async () => {
-    const proxied = await createTestApp({
-      env: { RATE_LIMIT_AUTH_PER_MINUTE: '1', TRUST_PROXY: '1' },
-    });
+    const proxied = await createTestApp({ env: { RATE_LIMIT_IP_PER_MINUTE: '1', TRUST_PROXY: '1' } });
     try {
-      const login = (ip: string) =>
-        request(proxied.getHttpServer())
-          .post('/api/v1/auth/login')
-          .set('X-Forwarded-For', ip)
-          .send({ email: 'nikt@test.local', password: 'zle-haslo' });
-      await login('203.0.113.1').expect(401);
-      await login('203.0.113.1').expect(429);
-      await login('203.0.113.2').expect(401);
+      const hit = (ip: string) => proxied.http().get('/v1/world').set('X-Forwarded-For', ip);
+      await hit('203.0.113.1').expect(401);
+      await hit('203.0.113.1').expect(429);
+      await hit('203.0.113.2').expect(401);
     } finally {
       await proxied.close();
+    }
+  });
+
+  it('Swagger pod /docs-json przy SWAGGER_ENABLED=true, wyłączony przy false', async () => {
+    const on = await createTestApp({ env: { SWAGGER_ENABLED: 'true' } });
+    const off = await createTestApp({ env: { SWAGGER_ENABLED: 'false' } });
+    try {
+      const res = await on.http().get('/docs-json').expect(200);
+      expect(res.body.info.title).toBe('Islanders World');
+      expect(res.body.paths['/v1/world']).toBeDefined();
+      await off.http().get('/docs-json').expect(404);
+    } finally {
+      await on.close();
+      await off.close();
     }
   });
 });

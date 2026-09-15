@@ -1,68 +1,50 @@
-import { parseEnv, EnvValidationError } from './env.js';
+import { EnvValidationError, parseEnv } from './env.js';
 
 const base = {
-  DATABASE_URL: 'postgres://islanders:islanders@localhost:5432/islanders',
-  JWT_SECRET: 'x'.repeat(32),
+  DATABASE_URL: 'postgres://islanders:islanders@localhost:5432/islanders_world_1',
+  WORLD_SLUG: 'world-1',
+  AUTH_INTERNAL_URL: 'http://auth:3001',
+  AUTH_ISSUER: 'https://users.islanders.online',
+  PUBLIC_URL: 'https://world-1.islanders.online',
+  ADMIN_URL: 'http://core-world-1:3101',
+  AUTH_CLIENT_ID: 'core-world-1',
+  AUTH_CLIENT_SECRET: 'sekret',
 };
 
-describe('parseEnv', () => {
+describe('parseEnv (core)', () => {
   it('stosuje wartości domyślne', () => {
     const env = parseEnv(base);
     expect(env.PORT).toBe(3000);
-    expect(env.NODE_ENV).toBe('development');
-    expect(env.JWT_ACCESS_TTL).toBe(15 * 60);
-    expect(env.JWT_REFRESH_TTL).toBe(30 * 24 * 3600);
-    expect(env.REDIS_URL).toBe('redis://localhost:6379');
-    expect(env.ISLANDERS_CLIENT_DIR).toBe('../../../islanders');
-    expect(env.RATE_LIMIT_AUTH_PER_MINUTE).toBe(10);
     expect(env.RATE_LIMIT_SUBJECT_PER_MINUTE).toBe(120);
     expect(env.RATE_LIMIT_IP_PER_MINUTE).toBe(600);
     expect(env.TRUST_PROXY).toBe(false);
+    expect(env.ISLANDERS_CLIENT_DIR).toBe('../../../islanders');
+    expect(env.SWAGGER_ENABLED).toBe(true);
+    expect(env.ADMIN_PORT).toBe(3101);
+    expect(env.CORE_ROLE).toBe('all');
   });
 
-  it('Swagger domyślnie włączony poza produkcją i wyłączony w produkcji', () => {
-    expect(parseEnv(base).SWAGGER_ENABLED).toBe(true);
-    expect(parseEnv({ ...base, NODE_ENV: 'production' }).SWAGGER_ENABLED).toBe(
-      false,
-    );
-    expect(
-      parseEnv({ ...base, NODE_ENV: 'production', SWAGGER_ENABLED: 'true' })
-        .SWAGGER_ENABLED,
-    ).toBe(true);
-    expect(
-      parseEnv({ ...base, SWAGGER_ENABLED: 'false' }).SWAGGER_ENABLED,
-    ).toBe(false);
+  it('wymaga poprawnego sluga świata i adresów auth', () => {
+    expect(() => parseEnv({ ...base, WORLD_SLUG: 'World 1' })).toThrow(/WORLD_SLUG/);
+    expect(() => parseEnv({ ...base, AUTH_INTERNAL_URL: 'auth' })).toThrow(/AUTH_INTERNAL_URL/);
+    const { AUTH_ISSUER: _drop, ...noIssuer } = base;
+    expect(() => parseEnv(noIssuer)).toThrow(EnvValidationError);
   });
 
-  it('parsuje czasy życia tokenów do sekund', () => {
-    const env = parseEnv({
-      ...base,
-      JWT_ACCESS_TTL: '90s',
-      JWT_REFRESH_TTL: '12h',
-    });
-    expect(env.JWT_ACCESS_TTL).toBe(90);
-    expect(env.JWT_REFRESH_TTL).toBe(12 * 3600);
+  it('odrzuca nieznaną rolę procesu', () => {
+    expect(() => parseEnv({ ...base, CORE_ROLE: 'batch' })).toThrow(/CORE_ROLE/);
   });
 
-  it('odrzuca brak JWT_SECRET z czytelnym komunikatem', () => {
-    expect(() => parseEnv({ DATABASE_URL: base.DATABASE_URL })).toThrow(
-      EnvValidationError,
-    );
-    expect(() => parseEnv({ DATABASE_URL: base.DATABASE_URL })).toThrow(
-      /JWT_SECRET/,
-    );
+  it('wymaga niepustego sekretu klienta auth', () => {
+    expect(() => parseEnv({ ...base, AUTH_CLIENT_SECRET: '' })).toThrow(/AUTH_CLIENT_SECRET/);
   });
 
-  it('odrzuca za krótki JWT_SECRET i zły format TTL', () => {
-    expect(() => parseEnv({ ...base, JWT_SECRET: 'short' })).toThrow(
-      /JWT_SECRET/,
-    );
-    expect(() => parseEnv({ ...base, JWT_ACCESS_TTL: '15 minutes' })).toThrow(
-      /JWT_ACCESS_TTL/,
-    );
+  it('przyjmuje tylko http/https w PUBLIC_URL i ADMIN_URL', () => {
+    expect(() => parseEnv({ ...base, PUBLIC_URL: 'ftp://world-1.islanders.online' })).toThrow(/PUBLIC_URL/);
+    expect(() => parseEnv({ ...base, ADMIN_URL: 'ftp://core-world-1:3101' })).toThrow(/ADMIN_URL/);
   });
 
-  it('ignoruje zmienne spoza schematu', () => {
-    expect(() => parseEnv({ ...base, PATH: '/usr/bin' })).not.toThrow();
+  it('nie zna już sekretów JWT core', () => {
+    expect(parseEnv({ ...base, JWT_SECRET: 'x'.repeat(40) })).not.toHaveProperty('JWT_SECRET');
   });
 });

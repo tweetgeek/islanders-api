@@ -7,7 +7,7 @@ describe('enumy Postgresa odpowiadają regułom domenowym', () => {
     expect(buildingType.enumValues).toEqual([...BUILDINGS]);
   });
   it('world_status i mission_type ze słownika', () => {
-    expect(worldStatus.enumValues).toEqual(['OPEN', 'CLOSED', 'ENDED']);
+    expect(worldStatus.enumValues).toEqual(['DRAFT', 'OPEN', 'CLOSED', 'ENDED']);
     expect(missionType.enumValues).toEqual([
       'COLONIZE',
       'ATTACK',

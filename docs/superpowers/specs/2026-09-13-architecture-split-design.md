@@ -84,6 +84,8 @@ dopiero, gdy poprzedni jest wdrożony na gałęzi głównej.
 
 ### Etap 2 — core jednego świata
 
+- Spec: `docs/superpowers/specs/2026-09-14-stage-2-single-world-core-design.md`.
+
 - Usunięcie `world_id` ze wszystkich tabel i tras (`/v1/world`, `/v1/settlements…`,
   `/v1/fleets…`); usunięcie modułów kont z core.
 - Weryfikacja tokenów przez JWKS z cache, strażnicy ról i profilu, profil kluczowany `playerId`.

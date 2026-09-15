@@ -7,8 +7,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { missionType } from './enums.js';
-import { players } from './players.js';
-import { worlds } from './worlds.js';
+import { profiles } from './profiles.js';
 
 export type FleetCargo = {
   units: Record<string, number>;
@@ -19,12 +18,9 @@ export const fleets = pgTable(
   'fleets',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    worldId: integer('world_id')
+    ownerId: uuid('owner_id')
       .notNull()
-      .references(() => worlds.id, { onDelete: 'cascade' }),
-    ownerId: integer('owner_id')
-      .notNull()
-      .references(() => players.id, { onDelete: 'cascade' }),
+      .references(() => profiles.playerId, { onDelete: 'cascade' }),
     mission: missionType('mission').notNull(),
     fromX: integer('from_x').notNull(),
     fromY: integer('from_y').notNull(),
@@ -40,7 +36,7 @@ export const fleets = pgTable(
     resolvedAt: timestamp('resolved_at', { withTimezone: true }),
   },
   (t) => [
-    index('fleets_world_owner_idx').on(t.worldId, t.ownerId),
-    index('fleets_world_target_idx').on(t.worldId, t.toX, t.toY),
+    index('fleets_owner_idx').on(t.ownerId),
+    index('fleets_target_idx').on(t.toX, t.toY),
   ],
 );

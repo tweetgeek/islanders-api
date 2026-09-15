@@ -1,26 +1,23 @@
 import { z } from 'zod';
-import {
-  baseEnvShape,
-  durationSchema,
-  durationToSeconds,
-  parseEnvWith,
-  withSwaggerDefault,
-} from '@islanders/platform';
+import { worldSlugSchema } from '@islanders/contracts';
+import { baseEnvShape, parseEnvWith, withSwaggerDefault } from '@islanders/platform';
 
-export { EnvValidationError, durationToSeconds } from '@islanders/platform';
+export { EnvValidationError } from '@islanders/platform';
 
 export const envSchema = z
   .object({
     ...baseEnvShape,
-    JWT_SECRET: z.string().min(32, 'co najmniej 32 znaki'),
-    JWT_ACCESS_TTL: durationSchema.default('15m').transform(durationToSeconds),
-    JWT_REFRESH_TTL: durationSchema.default('30d').transform(durationToSeconds),
+    WORLD_SLUG: worldSlugSchema,
+    AUTH_INTERNAL_URL: z.url(),
+    AUTH_ISSUER: z.url(),
     ISLANDERS_CLIENT_DIR: z.string().default('../../../islanders'),
-    SWEEP_INTERVAL_MS: z.coerce.number().int().min(1000).default(60_000),
-    WORKER_ENABLED: z
-      .enum(['true', 'false'])
-      .default('true')
-      .transform((v) => v === 'true'),
+    ADMIN_PORT: z.coerce.number().int().min(1).max(65535).default(3101),
+    CORE_ROLE: z.enum(['all', 'api', 'worker']).default('all'),
+    // Tylko http/https — zgodnie z kontraktem rejestracji świata w auth.
+    PUBLIC_URL: z.url({ protocol: /^https?$/ }),
+    ADMIN_URL: z.url({ protocol: /^https?$/ }),
+    AUTH_CLIENT_ID: z.string().min(1),
+    AUTH_CLIENT_SECRET: z.string().min(1),
   })
   .transform(withSwaggerDefault);
 
