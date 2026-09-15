@@ -89,7 +89,7 @@ Wszystkie tokeny mają `iss = https://users.islanders.online`, `iat`, `exp`, `jt
 ### 4.3 Decyzja o dostępie zapada w core, lokalnie
 
 - Podpis, `iss`, `aud`, `exp` — kluczem z JWKS trzymanym w pamięci i w Redisie świata
-  (`auth:jwks`, TTL 7 dni, wspólny dla replik); odświeżanie co godzinę i przy nieznanym `kid`
+  (`auth:jwks:<WORLD_SLUG>`, TTL 7 dni, wspólny dla replik); odświeżanie co godzinę i przy nieznanym `kid`
   (nie częściej niż raz na 30 s). Brak auth nie przerywa weryfikacji, także w świeżo
   uruchomionej replice; bez kluczy w pamięci i w Redisie trasy gracza zwracają 503.
 - Świat `isTest` wymaga roli `tester` lub `admin`.
@@ -185,8 +185,8 @@ Auth i core są bezstanowe i uruchamiane w N replikach za rozdzielaczem obciąż
 
 - Brak stanu w pamięci procesu: limiter zapytań na Redisie, klucze podpisu z sekretu,
   `trust proxy` z konfiguracji.
-- Workery BullMQ działają w każdej replice core; współbieżność rozstrzyga baza
-  (`SELECT … FOR UPDATE`, stała kolejność blokad).
+- Workery BullMQ (etap 5) działają w każdej replice core w rolach `all` i `worker`;
+  współbieżność rozstrzyga baza (`SELECT … FOR UPDATE`, stała kolejność blokad).
 - Prace „jedna na świat” (przemiatanie zaległości, wysyłka outboxa, tick pogody) biorą
   blokadę doradczą Postgresa bez czekania — wykonuje je jedna replika naraz.
 - Migracje uruchamia osobny krok wdrożenia (Job lub initContainer), nigdy start aplikacji.
@@ -241,9 +241,11 @@ dana usługa nie może obsłużyć żadnego żądania — dla core to własny Po
 
 Konfiguracja walidowana zod przy starcie.
 
-- **core:** `WORLD_SLUG`, `PUBLIC_URL`, `ADMIN_URL`, `PORT`, `ADMIN_PORT`, `DATABASE_URL`,
-  `REDIS_URL`, `AUTH_INTERNAL_URL`, `AUTH_ISSUER`, `AUTH_CLIENT_ID`, `AUTH_CLIENT_SECRET`,
-  `CORE_ROLE`, `TRUST_PROXY`.
+- **core:** `NODE_ENV`, `WORLD_SLUG`, `PUBLIC_URL`, `ADMIN_URL`, `PORT`, `ADMIN_PORT`,
+  `DATABASE_URL`, `REDIS_URL`, `AUTH_INTERNAL_URL`, `AUTH_ISSUER`, `AUTH_CLIENT_ID`,
+  `AUTH_CLIENT_SECRET`, `CORE_ROLE`, `TRUST_PROXY`, `SWAGGER_ENABLED`,
+  `RATE_LIMIT_SUBJECT_PER_MINUTE`, `RATE_LIMIT_IP_PER_MINUTE`, `RATE_LIMIT_PREFIX`,
+  `RATE_LIMIT_AUTH_PER_MINUTE`, `ISLANDERS_CLIENT_DIR`.
 - **auth:** `PORT`, `ADMIN_PORT`, `AUTH_ISSUER`, `DATABASE_URL`, `REDIS_URL`, `JWT_SIGNING_KEYS`
   (JSON z `kid`, aktywny klucz i klucze wycofywane), `JWT_ACCESS_TTL`, `JWT_REFRESH_TTL`,
   `SERVICE_CLIENTS` (identyfikatory, skróty sekretów, slug świata), `TRUST_PROXY`.
