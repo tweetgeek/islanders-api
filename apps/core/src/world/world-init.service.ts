@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { worldSlugSchema } from '@islanders/contracts';
+import { worldRegistrationSchema, worldSlugSchema } from '@islanders/contracts';
 import { DB, type Db } from '../infra/db/db.module.js';
 import { isUniqueViolation } from '../infra/db/pg-errors.js';
 import { type InitWorldInput, WorldSettingsRepository, type WorldSettingsRow } from './world-settings.repository.js';
@@ -29,6 +29,9 @@ export class WorldInitService {
   async init(input: InitWorldInput): Promise<WorldSettingsRow> {
     if (!worldSlugSchema.safeParse(input.slug).success) {
       throw new InvalidWorldInputError('slug: małe litery, cyfry i pojedyncze myślniki, 3–40 znaków');
+    }
+    if (!worldRegistrationSchema.shape.name.safeParse(input.name).success) {
+      throw new InvalidWorldInputError('name: od 1 do 64 znaków');
     }
     if (!Number.isInteger(input.seed) || input.seed < 0 || input.seed > 2_147_483_647) {
       throw new InvalidWorldInputError('seed musi być liczbą całkowitą w [0, 2147483647]');
