@@ -39,6 +39,11 @@ describe('parseEnv (core)', () => {
     expect(() => parseEnv({ ...base, AUTH_CLIENT_SECRET: '' })).toThrow(/AUTH_CLIENT_SECRET/);
   });
 
+  it('przyjmuje tylko http/https w PUBLIC_URL i ADMIN_URL', () => {
+    expect(() => parseEnv({ ...base, PUBLIC_URL: 'ftp://world-1.islanders.online' })).toThrow(/PUBLIC_URL/);
+    expect(() => parseEnv({ ...base, ADMIN_URL: 'ftp://core-world-1:3101' })).toThrow(/ADMIN_URL/);
+  });
+
   it('nie zna już sekretów JWT core', () => {
     expect(parseEnv({ ...base, JWT_SECRET: 'x'.repeat(40) })).not.toHaveProperty('JWT_SECRET');
   });
