@@ -36,7 +36,10 @@ export class WorldStatusService {
   ) {}
 
   /** Zmiana statusu pod blokadą wiersza świata, żeby dwa równoległe polecenia nie ominęły reguł. */
-  change(to: WorldStatus, options: { force: boolean }): Promise<{ from: WorldStatus; to: WorldStatus; forced: boolean }> {
+  change(
+    to: WorldStatus,
+    options: { force: boolean },
+  ): Promise<{ slug: string; from: WorldStatus; to: WorldStatus; forced: boolean }> {
     return this.db.transaction(async (tx) => {
       const world = await this.worlds.findForUpdate(tx);
       if (!world) throw new WorldNotInitializedError();
@@ -46,7 +49,7 @@ export class WorldStatusService {
       const now = this.clock.now();
       await this.worlds.setStatus(tx, to, now);
       await this.outbox.add(tx, worldStatusChangedEvent(world.slug, to, now));
-      return { from: world.status, to, forced: plan.forced };
+      return { slug: world.slug, from: world.status, to, forced: plan.forced };
     });
   }
 }

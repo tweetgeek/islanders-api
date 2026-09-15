@@ -65,9 +65,9 @@ try {
   } else {
     const result = await app.get(WorldStatusService).change(TARGETS[command!], { force: values.force ?? false });
     if (result.forced) {
-      console.warn(`UWAGA: wymuszone przejście ${result.from} → ${result.to}.`);
+      console.warn(`UWAGA: wymuszone przejście ${result.slug}: ${result.from} → ${result.to}.`);
     }
-    console.log(`Status świata: ${result.from} → ${result.to}.`);
+    console.log(`Świat ${result.slug}: ${result.from} → ${result.to}.`);
   }
 } catch (err) {
   console.error(err instanceof Error ? err.message : String(err));
